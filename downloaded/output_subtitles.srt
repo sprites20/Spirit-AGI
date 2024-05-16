@@ -1,0 +1,1236 @@
+1
+0.0 --> 2.3
+ This is a robot farmer.
+
+2
+3.6000000000000005 --> 9.46
+ Until recently, building a robot with the same capability has been almost science fiction.
+
+3
+10.06 --> 13.62
+ We came to the UK to see a robot that can do something totally new.
+
+4
+14.02 --> 15.92
+ It can pick soft fruit, like strawberries.
+
+5
+16.76 --> 18.78
+ Now there's already a lot of automation on farms.
+
+6
+19.26 --> 21.06
+ GPS guided tractors, for example.
+
+7
+21.54 --> 23.08
+ But nothing quite like this.
+
+8
+23.62 --> 26.74
+ Here we're trying to position something very delicate and small.
+
+9
+26.74 --> 30.68
+ We can move to anywhere in 3D space and we can approach that point from any angle.
+
+10
+31.02 --> 34.5
+ If you want to keep the strawberries intact, you need something smart and dexterous,
+
+11
+34.54 --> 35.88
+ which is what these robots do.
+
+12
+36.72 --> 37.4
+ Why do this?
+
+13
+37.98 --> 41.3
+ It turns out it's getting harder and harder to find the human labour we need
+
+14
+41.3 --> 46.04
+ to harvest all the strawberries made in a place like this huge, fancy strawberry farm.
+
+15
+46.62 --> 51.98
+ The cost of fruit wasted last year in the UK purely because of our inability to recruit enough pickers
+
+16
+51.98 --> 53.8
+ was about 35 million pounds.
+
+17
+53.8 --> 56.58
+ That number is forecasted double again this year.
+
+18
+56.78 --> 60.88
+ For me, this is a catastrophe and robotic automation can help enormously.
+
+19
+61.52 --> 65.2
+ And as these robots get smarter and more dexterous, they can do more than that.
+
+20
+65.62 --> 68.66
+ It can actually help us rethink everything we know about physical labour.
+
+21
+69.0 --> 73.9
+ It takes a lot of effort, intelligence and bloody-minded perseverance to make it work.
+
+22
+75.02 --> 79.52
+ This is Hard Recent, a series about rebuilding our world from scratch.
+
+23
+83.03999999999999 --> 86.96
+ Farming is probably humanity's oldest industry,
+
+24
+87.24 --> 91.68
+ but increasingly we're having to rethink all kinds of things.
+
+25
+92.7 --> 97.42
+ This is Duncan. He is one of the co-founders of Dogtooth and his background is in farming.
+
+26
+97.74 --> 100.36
+ So my background is not in agriculture at all.
+
+27
+100.68 --> 103.94
+ My background is in machine learning and computer vision.
+
+28
+104.68 --> 108.46
+ Oh, well the idea for Dogtooth came to Duncan while he was on a flight.
+
+29
+108.46 --> 110.44
+ While he was sitting on a beach in Morocco.
+
+30
+111.32 --> 112.16
+ Well, God damn it.
+
+31
+112.56 --> 116.3
+ Morocco is an incredibly beautiful country, but it is covered in litter
+
+32
+116.3 --> 120.68
+ and it just struck me that knowing what I knew about computer vision and machine learning,
+
+33
+120.9 --> 125.66
+ actually the problem of identifying the litter on the beach using cameras was largely solved.
+
+34
+125.86 --> 130.12
+ What we needed was a low-cost robot that could crawl their way around the beach
+
+35
+130.12 --> 131.74
+ and pick up all the pieces of litter.
+
+36
+132.0 --> 135.18
+ That underlying thinking took us in a slightly different direction.
+
+37
+135.74 --> 137.28
+ It took them to a farm.
+
+38
+137.86 --> 138.86
+ Hey, third time's the charm.
+
+39
+140.06 --> 144.72
+ This is Ed, Duncan's co-founder, and he's going to show us how the robots get built.
+
+40
+144.92 --> 147.24
+ Welcome to Dogtooth. This is our R&D workshop.
+
+41
+147.68 --> 150.6
+ Our robots are made up of a few different technologies,
+
+42
+150.8 --> 153.24
+ if you like electronics, mechanical and software,
+
+43
+153.46 --> 155.04
+ and they're all brought together with this firmware
+
+44
+155.04 --> 157.28
+ and this is where most of that integration work happens.
+
+45
+157.56 --> 158.64
+ So here you'll see our clean room.
+
+46
+158.88 --> 161.62
+ This is where we do all of our electronics integration work.
+
+47
+162.22 --> 166.14
+ In order to make the robot work in such a dynamic environment like a farm,
+
+48
+166.5 --> 169.46
+ the folks at Dogtooth couldn't use a lot of off-the-shelf technology.
+
+49
+169.8 --> 173.14
+ They practically had to make every part of this robot from scratch.
+
+50
+173.52 --> 174.76
+ So this is our commissioning area.
+
+51
+175.46 --> 177.92
+ So on the right here, we do arm commissioning.
+
+52
+178.08 --> 181.14
+ This robot arm, how much of this is custom designed by you?
+
+53
+181.26 --> 182.28
+ All of it, unfortunately.
+
+54
+183.06 --> 183.94
+ This is all of our stuff.
+
+55
+184.24 --> 188.04
+ Yeah, these arms here are in different stages of commissioning.
+
+56
+188.04 --> 191.58
+ The ones without any covers are on their initial test.
+
+57
+192.04 --> 194.16
+ So once it's done, it's initial commissioning test.
+
+58
+194.42 --> 197.52
+ It gets its covers put on and then it will run through a burn-in test.
+
+59
+197.7 --> 198.78
+ And that takes about 16 hours.
+
+60
+199.3 --> 201.78
+ So this is like C-3PO in Phantom Menace,
+
+61
+201.96 --> 203.54
+ and then this is from A New Hope.
+
+62
+204.18 --> 204.6
+ There you go.
+
+63
+205.34 --> 206.16
+ I've never seen Star Wars.
+
+64
+206.7 --> 207.0
+ What?
+
+65
+207.26 --> 208.66
+ I know the reference where it's from,
+
+66
+208.84 --> 210.5
+ but I don't know Star Wars, I'm afraid.
+
+67
+211.18 --> 212.18
+ Oh my gosh.
+
+68
+212.86 --> 215.96
+ Like the Star Wars movies, robots are not new.
+
+69
+215.96 --> 217.28
+ They've been around for decades,
+
+70
+217.54 --> 219.96
+ and there's very little excuse for not having Seaman.
+
+71
+220.44 --> 223.32
+ But unlike C-3PO, robots in the real world
+
+72
+223.32 --> 225.32
+ could only work in structured environments
+
+73
+225.32 --> 226.88
+ with very tight tolerances.
+
+74
+227.6 --> 229.22
+ In other words, nothing like a farm.
+
+75
+229.76 --> 232.54
+ Is this like driving with a PlayStation joystick?
+
+76
+232.94 --> 233.76
+ Exactly right, yeah.
+
+77
+233.98 --> 236.88
+ So my wasted teenage years weren't so wasted.
+
+78
+237.58 --> 238.14
+ Seaman.
+
+79
+238.46 --> 241.22
+ So this is one of our fourth generation robots.
+
+80
+241.7 --> 243.42
+ The nice thing about our arms
+
+81
+243.42 --> 245.38
+ is that they are super flexible.
+
+82
+245.38 --> 247.04
+ It's got six degrees of freedom,
+
+83
+247.52 --> 249.18
+ and at any given joint,
+
+84
+249.7 --> 251.52
+ the actual ability of the arms
+
+85
+251.52 --> 254.04
+ rotate way more than 360 degrees.
+
+86
+254.7 --> 256.24
+ In this pic ahead here, you'll see
+
+87
+256.24 --> 258.54
+ a pair of cameras and a bunch of LEDs.
+
+88
+258.9 --> 260.2
+ The LEDs allow us to pick at night.
+
+89
+260.98 --> 262.82
+ The cameras allow us to see the fruit in 3D.
+
+90
+263.2 --> 264.28
+ And in the center here,
+
+91
+264.76 --> 266.46
+ we have our inspection system
+
+92
+266.46 --> 268.0
+ where once we pick the berry,
+
+93
+268.22 --> 270.1
+ we can suspend it into this chamber,
+
+94
+270.44 --> 272.64
+ got cameras so we can view the berry all around.
+
+95
+272.88 --> 273.78
+ Nice consistent lighting.
+
+96
+273.78 --> 276.0
+ Pick up 17 different types of defects.
+
+97
+276.4 --> 278.02
+ And so we know whether to put it into a way-shoot
+
+98
+278.02 --> 279.68
+ or into a punnet ready for retail.
+
+99
+279.98 --> 280.76
+ What are you guys calling?
+
+100
+281.08 --> 281.32
+ Punnets.
+
+101
+281.54 --> 281.92
+ Punnets?
+
+102
+282.1 --> 282.24
+ Yeah.
+
+103
+283.38 --> 284.9
+ You guys have crazy names for things.
+
+104
+285.22 --> 287.68
+ I think in US they're clam shells, right?
+
+105
+287.94 --> 288.54
+ That sounds right.
+
+106
+288.82 --> 288.96
+ Yeah.
+
+107
+289.62 --> 291.3
+ Or just the boxer strawberries coming.
+
+108
+291.52 --> 291.88
+ Yeah, sure.
+
+109
+292.16 --> 293.82
+ So here's our polytunnel.
+
+110
+294.0 --> 295.52
+ We put this up about three years ago.
+
+111
+295.84 --> 296.96
+ And we're actually, it turns out,
+
+112
+297.12 --> 297.92
+ all right at growing strawberries.
+
+113
+298.72 --> 300.86
+ For a bunch of engineers, we're going all right.
+
+114
+300.86 --> 303.52
+ So the first question I have as someone from the United States,
+
+115
+303.78 --> 305.6
+ I've never seen a strawberry farm
+
+116
+305.6 --> 307.62
+ this at arm's height.
+
+117
+308.12 --> 308.24
+ Yeah.
+
+118
+308.4 --> 309.14
+ It's right all the way.
+
+119
+309.22 --> 310.86
+ It already feels like a better design,
+
+120
+310.86 --> 312.18
+ just from a picking standpoint for humans.
+
+121
+312.26 --> 312.96
+ Absolutely is.
+
+122
+313.42 --> 315.04
+ Here in the UK, we tend to use
+
+123
+315.04 --> 317.38
+ quite modern tabletop growing systems.
+
+124
+317.56 --> 319.4
+ Approximately the right height to make it easy
+
+125
+319.4 --> 322.18
+ for human workers to pick the fruit.
+
+126
+324.46 --> 326.82
+ Obviously about the robot is it's got to be super rugged.
+
+127
+327.08 --> 328.34
+ We're here on a nice flat farm
+
+128
+328.34 --> 329.1
+ in the middle of Cambridgeshire.
+
+129
+329.38 --> 329.52
+ Right.
+
+130
+329.52 --> 332.26
+ We also operate these on very steep hillsides
+
+131
+332.26 --> 333.66
+ when it's raining cats and dogs
+
+132
+333.66 --> 335.08
+ and there's mud everywhere.
+
+133
+335.56 --> 336.9
+ So we've got super rugged tracks.
+
+134
+337.28 --> 339.42
+ Moving on up, you've got the two robot arms
+
+135
+339.42 --> 341.0
+ which are doing all the clever bits.
+
+136
+341.46 --> 343.84
+ The arms of the robot have these stereo cameras
+
+137
+343.84 --> 345.24
+ and they use computer vision
+
+138
+345.24 --> 347.32
+ to navigate this complex environment.
+
+139
+347.78 --> 349.82
+ Find a stock and gently remove the fruit.
+
+140
+351.70000000000005 --> 353.2
+ So welcome to the glasshouse.
+
+141
+353.46 --> 355.82
+ Up here, you'll see us starting to run robots.
+
+142
+356.02 --> 358.22
+ We've got six running today, I believe.
+
+143
+358.22 --> 360.16
+ What we're essentially doing is just looking
+
+144
+360.16 --> 361.82
+ for clean lines on which to pick
+
+145
+361.82 --> 363.84
+ so that we're maximising our chance
+
+146
+363.84 --> 365.22
+ of getting our target berry.
+
+147
+365.66 --> 366.7
+ We've also got a clear vector
+
+148
+366.7 --> 368.48
+ to the stalk that I interested in.
+
+149
+368.9 --> 369.92
+ I'll pick along that vector,
+
+150
+370.36 --> 372.44
+ grab a stalk, grip and cut it
+
+151
+372.44 --> 373.62
+ and then I'll take it to the
+
+152
+373.62 --> 374.78
+ inspection chamber here.
+
+153
+375.0 --> 377.38
+ You'll see a few flashes as it images it all around
+
+154
+377.38 --> 379.52
+ then it will decide which planet to put it in.
+
+155
+379.76 --> 381.02
+ Well it's interesting because on this one
+
+156
+381.02 --> 382.52
+ it looks like it picked the right berry.
+
+157
+383.08000000000004 --> 384.36
+ It just was attached to it.
+
+158
+384.62 --> 385.9
+ Yeah, so you'll see here
+
+159
+385.9 --> 387.0
+ it just picked a little bit high
+
+160
+387.0 --> 389.4
+ and so I've got another berry in with it.
+
+161
+389.62 --> 389.68
+ Right.
+
+162
+389.74 --> 390.82
+ I'll pick that up in the inspection chamber
+
+163
+390.82 --> 392.18
+ and so it's put it into a punnet here
+
+164
+392.18 --> 393.5
+ for us to sort through it,
+
+165
+393.84 --> 394.64
+ pick up a good berry
+
+166
+394.64 --> 396.38
+ and leave a bad berry behind.
+
+167
+397.44 --> 398.4
+ Just to be clear,
+
+168
+398.7 --> 401.36
+ this robot won't mean the end of humans on farms
+
+169
+401.36 --> 402.74
+ so there will still be plenty
+
+170
+402.74 --> 405.4
+ of dating profiles on farmersonly.com.
+
+171
+405.84 --> 407.28
+ The dream I think is that robots
+
+172
+407.28 --> 409.26
+ can perform some of the dull tasks
+
+173
+409.26 --> 411.06
+ and allow us to focus on the things
+
+174
+411.06 --> 413.2
+ that we as human beings are uniquely good at.
+
+175
+413.38 --> 414.14
+ So here at Dogtooth,
+
+176
+414.2 --> 415.9
+ the goal isn't to replace human workers
+
+177
+415.9 --> 417.84
+ but the workforce for something
+
+178
+417.84 --> 420.22
+ like strawberry picking which is a seasonal job.
+
+179
+420.44 --> 421.94
+ It's very difficult to make sure
+
+180
+421.94 --> 424.14
+ that we're getting enough workers across the UK.
+
+181
+424.36 --> 426.4
+ So the way that we view it is that
+
+182
+426.4 --> 428.38
+ the robots we can create will be very good
+
+183
+428.38 --> 430.32
+ at doing a very specific task.
+
+184
+430.68 --> 433.3
+ For us we look to incorporate our robots
+
+185
+433.3 --> 435.5
+ with human workers so the humans can do
+
+186
+435.5 --> 437.04
+ the thinking that the robot can't.
+
+187
+437.48 --> 439.94
+ For now, humans will supervise teams
+
+188
+439.94 --> 441.68
+ of these robots as they harvest berries
+
+189
+441.68 --> 444.26
+ and the robots for now are a bit slower
+
+190
+444.26 --> 445.36
+ than the humans at picking.
+
+191
+445.88 --> 447.72
+ How long does it typically take for one to finish a row?
+
+192
+451.18 --> 455.0
+ One of the things that we haven't prioritised yet
+
+193
+455.0 --> 456.5
+ is making them go faster.
+
+194
+456.8 --> 458.88
+ With these robots, we've gone for the
+
+195
+458.88 --> 460.06
+ strobe but steady approach.
+
+196
+460.56 --> 463.06
+ The maximum speed that we have around these robots
+
+197
+463.06 --> 465.82
+ is about a quarter of the speed of an average person.
+
+198
+466.12 --> 467.26
+ The next generation we're working on
+
+199
+467.26 --> 468.48
+ will be more like half the speed,
+
+200
+468.64 --> 470.74
+ maybe even more like three-quarters of the speed of a person
+
+201
+470.74 --> 473.1
+ but because they come on for multiple shifts in a day
+
+202
+473.1 --> 475.44
+ they're able to pick off just as much fruits
+
+203
+475.44 --> 477.72
+ as a person can over a course of the day.
+
+204
+478.02 --> 479.62
+ Another interesting difference is that
+
+205
+479.62 --> 481.66
+ these robots don't grab the berry itself.
+
+206
+482.1 --> 483.2
+ They pick from the stem.
+
+207
+483.8 --> 485.84
+ This has the benefit of making the robot
+
+208
+485.84 --> 487.04
+ a little bit less complex
+
+209
+487.04 --> 489.86
+ but mainly it avoids the problem of bruising
+
+210
+489.86 --> 492.32
+ and prevents the spread of fungus or other pests.
+
+211
+493.0 --> 494.5
+ So as someone who buys a lot of strawberries
+
+212
+494.5 --> 496.6
+ how do I know whether it has been picked by a robot?
+
+213
+496.82 --> 498.52
+ On the end of each stalk you can see
+
+214
+498.52 --> 499.78
+ this one which has just been picked here.
+
+215
+500.08 --> 502.12
+ There's a little crimp mark just below the top
+
+216
+502.12 --> 504.82
+ and that's where it's been held onto by the robot.
+
+217
+506.06 --> 507.6
+ Ironically, these robots were made
+
+218
+507.6 --> 509.8
+ to supplement a dwindling migrant workforce
+
+219
+509.8 --> 512.84
+ but now they themselves are a migrant workforce.
+
+220
+513.5 --> 516.22
+ So these are designed to work out of shipping containers.
+
+221
+516.62 --> 518.78
+ We've currently got 16 of these in our shipping container
+
+222
+518.78 --> 519.72
+ on their way to Tasmania.
+
+223
+520.28 --> 522.4
+ These robots spend part of the year in Australia
+
+224
+522.4 --> 524.32
+ but it's far more affordable
+
+225
+524.32 --> 526.64
+ and environmentally friendly to ship robots
+
+226
+526.64 --> 527.9
+ to Australia than humans.
+
+227
+528.88 --> 531.0
+ And believe me, no one knows more
+
+228
+531.0 --> 533.16
+ about how expensive it is to ship humans
+
+229
+533.16 --> 534.94
+ to Australia than the English.
+
+230
+536.82 --> 538.2
+ Robotics will make it profitable
+
+231
+538.2 --> 539.94
+ to grow crops in more places
+
+232
+539.94 --> 541.76
+ closer to where they're consumed
+
+233
+541.76 --> 544.06
+ and that will reduce the carbon impact
+
+234
+544.06 --> 545.9
+ and make delicious fresh produce
+
+235
+545.9 --> 547.04
+ available to more people.
+
+236
+547.78 --> 550.12
+ I was talking to some farmers yesterday
+
+237
+550.12 --> 552.74
+ about whether this, you know,
+
+238
+552.9 --> 554.32
+ robotics was a revolution or not
+
+239
+554.32 --> 557.24
+ and I was saying it's not a revolution, it's a transition.
+
+240
+557.54 --> 559.24
+ If you look at it now, the difference between
+
+241
+559.24 --> 560.74
+ a modern farm and a farm
+
+242
+561.32 --> 563.26
+ 150 years ago is huge
+
+243
+563.26 --> 564.68
+ but that didn't happen overnight.
+
+244
+564.92 --> 567.18
+ We're just at the start of really applying
+
+245
+567.18 --> 569.74
+ this kind of idea of intelligent robotics
+
+246
+569.74 --> 572.52
+ to real-world tangible problems
+
+247
+572.52 --> 574.58
+ and it's a really exciting journey we're all on.
+
+248
+578.14 --> 578.9
+ Very cool.
+
+249
+581.0600000000001 --> 583.18
+ So picture a scenario where robots
+
+250
+583.18 --> 585.52
+ are involved in harvesting all of our produce.
+
+251
+586.12 --> 587.42
+ The economics of food production
+
+252
+587.42 --> 588.66
+ would be totally different.
+
+253
+589.62 --> 591.42
+ Robots like this wouldn't just address
+
+254
+591.42 --> 593.94
+ labor shortages, they'd address food shortages
+
+255
+593.94 --> 595.64
+ by allowing precision agriculture
+
+256
+595.64 --> 598.14
+ in places where it just wasn't possible before.
+
+257
+598.58 --> 599.5
+ I don't think most people realize
+
+258
+599.5 --> 600.82
+ how big of a problem food waste is.
+
+259
+601.22 --> 602.4
+ It's 40% in the UK.
+
+260
+602.78 --> 604.84
+ We throw 40% away of fresh produce.
+
+261
+605.72 --> 606.86
+ It's nuts, isn't it?
+
+262
+607.7 --> 609.8
+ So each robot is also going to be harvesting
+
+263
+609.8 --> 612.28
+ about 40 gigabytes of data every day.
+
+264
+612.66 --> 614.9
+ We're now working, building that together
+
+265
+614.9 --> 617.82
+ with WeatherToolCosm to a yield prediction model
+
+266
+617.82 --> 619.42
+ where we can tell the future
+
+267
+619.42 --> 622.04
+ and understand not just what's ready to pick today
+
+268
+622.04 --> 623.86
+ but what will be ready in two weeks' time.
+
+269
+624.32 --> 626.44
+ And the intelligence that allows a robot
+
+270
+626.44 --> 628.56
+ to work in an inconsistent environment
+
+271
+628.56 --> 630.6
+ like a farm will eventually develop
+
+272
+630.6 --> 632.7
+ into the kind of intelligence that enables them
+
+273
+632.7 --> 635.2
+ to work in other dynamic, inconsistent places
+
+274
+635.2 --> 637.6
+ like stores, hospitals or homes.
+
+275
+637.6 --> 641.06
+ In theory, there's almost no physical job
+
+276
+641.06 --> 642.16
+ a robot couldn't do.
+
+277
+643.04 --> 644.78
+ So where does that leave humans?
+
+278
+646.24 --> 647.6
+ I think the hope is that
+
+279
+647.6 --> 649.68
+ automation will allow us to create
+
+280
+649.68 --> 651.82
+ more desirable jobs for people.
+
+281
+652.34 --> 654.06
+ But I think there is also a threat.
+
+282
+654.84 --> 656.44
+ The danger I see is that we use
+
+283
+656.44 --> 659.38
+ robotic automation to displace people,
+
+284
+659.66 --> 661.82
+ to rob people of the opportunity
+
+285
+661.82 --> 663.22
+ to earn a livelihood.
+
+286
+664.44 --> 666.1
+ Intelligence applied to robots
+
+287
+666.1 --> 668.28
+ has the potential to completely change
+
+288
+668.28 --> 670.4
+ everything we know about physical labor.
+
+289
+671.1 --> 673.04
+ If we do it wrong, it could cause
+
+290
+673.04 --> 675.44
+ the greatest labor disruption in human history.
+
+291
+676.24 --> 677.6
+ But if we do it right,
+
+292
+678.06 --> 679.98
+ it will free up an even greater source
+
+293
+679.98 --> 682.14
+ of adaptable intelligence with the capacity
+
+294
+682.14 --> 683.18
+ to shape the world.
+
+295
+684.12 --> 684.42
+ Us.
+
+296
+684.98 --> 686.28
+ I think the interesting observation is that
+
+297
+686.28 --> 689.14
+ we're teaching robots to perform functions
+
+298
+689.14 --> 692.06
+ that we as human beings find really easy.
+
+299
+692.42 --> 695.1
+ As people, we are remarkably good
+
+300
+695.1 --> 697.1
+ at performing what are actually
+
+301
+697.1 --> 698.64
+ incredibly complex tasks.
+
+302
+699.02 --> 700.18
+ It should make us celebrate
+
+303
+700.18 --> 703.22
+ the beauty and capability of humanity.
+
+304
+706.02 --> 707.46
+ I'm from America. What's a kilo?
+
+305
+708.06 --> 709.34
+ A kilo is half a pound.
+
+306
+709.56 --> 710.6
+ 2.2 pounds to a kilo.
+
+307
+710.84 --> 712.64
+ I only use metric system when I'm buying drugs.
+
+308
+714.36 --> 716.04
+ Never bought a kilo of drugs.
+
+309
+716.24 --> 716.84
+ Just to be clear.
+
