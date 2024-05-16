@@ -1,6 +1,6 @@
 Do
 ```
-pip install -r requirements
+pip install -r -u requirements.txt
 ```
 
 Then
