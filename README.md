@@ -8,7 +8,11 @@ Then
 ```
 python somecbox3.py
 ```
+or
 
+```
+python somekivybox.py
+```
 ![alt text](https://github.com/sprites20/Spirit-AGI/blob/main/cat.png)
 
 ![alt text](https://github.com/sprites20/Spirit-AGI/blob/main/node.png)
