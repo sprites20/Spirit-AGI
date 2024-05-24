@@ -210,7 +210,8 @@ class AsyncNode:
                 target = address.get("target")
                 input_args[target] = node.output_args.get(arg_name)
                 #Here replace thing in output args with whatever queued. If none use same thing
-                
+            print("Input Addresses: ", self.input_addresses)
+            print("Input Args", input_args)
             # Pass input_args and self to the function
             # Schedule UI update in the main Kivy thread
             Clock.schedule_once(lambda dt: self.change_to_red(), 0)
@@ -229,9 +230,13 @@ class AsyncNode:
                 pass
         #print(node)
         #print(self.output_args)
+        """
         for node in self.trigger_out:
             #print(f"Triggering output node {node.function_name}")
             await node.trigger()
+        """
+        tasks = [asyncio.create_task(node.trigger()) for node in self.trigger_out]
+        await asyncio.gather(*tasks)
 
 class MousePositionWidget(Widget):
     def __init__(self, **kwargs):
@@ -376,10 +381,9 @@ class TouchableRectangle(Widget):
                                         #print(child.node_id, connections[child.node_id])
                                         #print(connections)
                                     break
-            if found_circle:     
-                async_nodes[curr_parent].input_addresses.append({"node": async_nodes[curr_child], "arg_name": self.curr_i, "target": curr_j})
-                
-                node_info[curr_parent]["input_addresses"].append({"node": curr_child, "arg_name": self.curr_i, "target": curr_j})
+            if found_circle:
+                async_nodes[curr_child].input_addresses.append({"node": async_nodes[curr_parent], "arg_name": self.curr_i, "target": curr_j})
+                node_info[curr_child]["input_addresses"].append({"node": curr_parent, "arg_name": self.curr_i, "target": curr_j})
                 
                 print(curr_child)
                 
@@ -902,10 +906,11 @@ async def context(node):
         "function_name": "prompt",
         "import_string" : None,
         "function_string" : """
-async def prompt(node):
+async def prompt(node, model=None, user_prompt=None, context=None):
     print("Prompt")
+    print(model, user_prompt, context)
     await asyncio.sleep(.25)
-    return None
+    return {"output" : user_prompt}
         """,
         "description" : None,
         "documentation" : None,
@@ -1445,6 +1450,7 @@ print(\"Added\", {function_name})
         #print("Nodes: ", nodes)
 
         print("Node Info: ", node_info)
+        print("Async Nodes: ", async_nodes)
         f = open("node_info.json", "w")
         f.write(json.dumps(node_info))
         f.close()
@@ -1489,8 +1495,13 @@ print(\"Added\", {function_name})
         for i in nodes:
             self.layout.add_widget(nodes[i])
         print("Nodes: ", nodes)
-        #Update trigger_connections
-    
+        #Update trigger_connections located in AsyncNode trigger_out
+        for i in async_nodes:
+            async_nodes[i].trigger_out = []
+            for j in node_info[i]["trigger_out"]:
+                async_nodes[i].trigger_out.append(async_nodes[j])
+            print(node_info[i]["trigger_out"])
+            print(async_nodes[i].trigger_out)
     def new_node(self, instance):
         node_id = generate_node("ignition", pos = [100, 200])
         self.layout.add_widget(nodes[node_id])
@@ -1511,7 +1522,9 @@ print(\"Added\", {function_name})
                 #print(i, async_nodes[i])
                 try:
                     # Your existing code here...
+                    print("someasync: ", async_nodes[i].trigger_out, i)
                     await async_nodes[i].trigger()
+                    
                     # Your existing code here...
                 except RecursionError:
                     print("Maximum recursion depth reached. Stopping program.")
