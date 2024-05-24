@@ -210,14 +210,14 @@ class AsyncNode:
                 target = address.get("target")
                 input_args[target] = node.output_args.get(arg_name)
                 #Here replace thing in output args with whatever queued. If none use same thing
-            print("Input Addresses: ", self.input_addresses)
-            print("Input Args", input_args)
+            #print("Input Addresses: ", self.input_addresses)
+            #print("Input Args", input_args)
             # Pass input_args and self to the function
             # Schedule UI update in the main Kivy thread
             Clock.schedule_once(lambda dt: self.change_to_red(), 0)
             output_args = await function_to_call(self, **input_args)
             Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
-            print(output_args)
+            print("Output args: ", output_args)
 
             # Update output_args with the function's output, appending new args and replacing existing ones
             try:
@@ -225,10 +225,11 @@ class AsyncNode:
                     if arg_name not in self.output_args:
                         self.output_args[arg_name] = value
                     else:
-                        self.output_args[arg_nadome] = value
+                        self.output_args[arg_name] = value
             except:
                 pass
         #print(node)
+        print("Output args: ", self.output_args)
         #print(self.output_args)
         """
         for node in self.trigger_out:
@@ -416,6 +417,34 @@ class TruncatedLabel(Label):
         else:
             # Text fits within the Label width
             self.text = self.text
+def display_output_2(user_text):
+    app = MDApp.get_running_app()
+    print("App: ", app)
+    instruct_type = app.get_instruct_type(user_text)
+    if instruct_type == 1:
+        app.generate_image_prompt(user_text)
+    # Continue the conversation            
+    response = app.continue_conversation()
+    #bot_text = response
+    
+    user_header_text = '[b]User[/b] [size=12][color=#A9A9A9]{}[/color][/size]'.format(app.current_date)
+    bot_header_text = '[b]Bot[/b] [size=12][color=#A9A9A9]{}[/color][/size]'.format(app.current_date)
+    
+    user_message = user_header_text + '\n' + user_text
+    bot_message = bot_header_text + '\n' + response
+    
+    
+    #print(text_input)
+    
+    user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
+    bot_custom_component = CustomComponent(img_source="images/bot_logo.png", txt=bot_message)
+    
+    grid_layout = app.root.get_screen("some_screen").ids.grid_layout
+    grid_layout.add_widget(user_custom_component)
+    #grid_layout.add_widget(CustomImageComponent(img_source="images/bug.png"))
+    grid_layout.add_widget(bot_custom_component)
+    if instruct_type == 1:
+        grid_layout.add_widget(CustomImageComponent(img_source="images/generated_image.jpeg"))
 
 class DraggableLabel(DragBehavior, Label):
     def __init__(self, inputs, name, node_id, outputs, pos, regenerated=False, **kwargs):
@@ -491,7 +520,7 @@ class DraggableLabel(DragBehavior, Label):
                 if len(i) > max_length:
                     text = i[:max_length] + "..."
                     
-                label = TruncatedLabel(text=f'{text}', size=(dp(len(f'{text}')*8), dp(10)))
+                label = TruncatedLabel(text=f'{text}', size=(dp(len(f'{text}')*5), dp(10)))
                 self.add_widget(label)
                 self.input_labels[i] = label
                 #print(len(f'{i}')*10)
@@ -506,7 +535,7 @@ class DraggableLabel(DragBehavior, Label):
             count = 1
             for i in self.outputs:
                 # Add labels to the bottom box
-                label = TruncatedLabel(text=f'{i}', size=(dp(len(f'{i}')*10), dp(10)))
+                label = TruncatedLabel(text=f'{i}', size=(dp(len(f'{i}')*5), dp(10)))
                 self.add_widget(label)
                 self.output_labels[i] = label
                 #print(self.output_labels[i])
@@ -536,12 +565,12 @@ class DraggableLabel(DragBehavior, Label):
         
         count = 1
         for i in self.inputs:
-            self.input_labels[i].pos = (self.offsetted_pos[0]+10, self.offsetted_pos[1] - (20 * count))
+            self.input_labels[i].pos = (self.offsetted_pos[0]+20, self.offsetted_pos[1] - (20 * count))
             self.input_label_circles[i].pos = (self.offsetted_pos[0]-3, self.offsetted_pos[1] - (20 * count))
             count += 1
         count = 1
         for i in self.outputs:
-            self.output_labels[i].pos = (self.offsetted_pos[0] + self.width - self.output_labels[i].width - 10, self.offsetted_pos[1] - (20 * count))
+            self.output_labels[i].pos = (self.offsetted_pos[0] + self.width - self.output_labels[i].width - 20, self.offsetted_pos[1] - (20 * count))
             self.output_label_circles[i].pos = (self.offsetted_pos[0] + self.width-7, self.offsetted_pos[1] - (20 * count))
             count += 1
         
@@ -582,10 +611,9 @@ class DraggableLabel(DragBehavior, Label):
             self.mouse_offset[1] += dy
             #print("Delta from MousePositionWidget:", self.mouse_offset)
         self.prev_pos = touch.pos
-        global added_node
-        if added_node and self.regenerated:
+        if self.regenerated:
             temp_pos = (node_info[self.node_id]["pos"][0], node_info[self.node_id]["pos"][1])
-            print("Added Node Move", temp_pos)
+            #print("Added Node Move", temp_pos)
             self.pos = (temp_pos[0], temp_pos[1])
             self.label.pos = (temp_pos[0], temp_pos[1])
             self.label_rect.pos = (temp_pos[0], temp_pos[1])
@@ -602,13 +630,13 @@ class DraggableLabel(DragBehavior, Label):
             
             count = 1
             for i in self.inputs:
-                self.input_labels[i].pos = (temp_pos[0]+10, temp_pos[1] - (20 * count))
+                self.input_labels[i].pos = (temp_pos[0]+20, temp_pos[1] - (20 * count))
                 self.input_label_circles[i].pos = (temp_pos[0]-3, temp_pos[1] - (20 * count))
                 count += 1
             count = 1
             for i in self.outputs:
                 self.output_labels[i].pos = (temp_pos[0] + self.width - self.output_labels[i].width - 10, temp_pos[1] - (20 * count))
-                self.output_label_circles[i].pos = (temp_pos[0] + self.width-7, temp_pos[1] - (20 * count))
+                self.output_label_circles[i].pos = (temp_pos[0] + self.width-20, temp_pos[1] - (20 * count))
                 count += 1
             
             if self.line2:
@@ -641,12 +669,12 @@ class DraggableLabel(DragBehavior, Label):
             
             count = 1
             for i in self.inputs:
-                self.input_labels[i].pos = (self.x+10, self.y - (20 * count))
+                self.input_labels[i].pos = (self.x+20, self.y - (20 * count))
                 self.input_label_circles[i].pos = (self.x-3, self.y - (20 * count))
                 count += 1
             count = 1
             for i in self.outputs:
-                self.output_labels[i].pos = (self.x + self.width - self.output_labels[i].width - 10, self.y - (20 * count))
+                self.output_labels[i].pos = (self.x + self.width - self.output_labels[i].width - 20, self.y - (20 * count))
                 self.output_label_circles[i].pos = (self.x + self.width-7, self.y - (20 * count))
                 count += 1
             
@@ -678,12 +706,12 @@ class DraggableLabel(DragBehavior, Label):
             
             count = 1
             for i in self.inputs:
-                self.input_labels[i].pos = (self.x+10, self.y - (20 * count))
+                self.input_labels[i].pos = (self.x+20, self.y - (20 * count))
                 self.input_label_circles[i].pos = (self.x-3, self.y - (20 * count))
                 count += 1
             count = 1
             for i in self.outputs:
-                self.output_labels[i].pos = (self.x + self.width - self.output_labels[i].width - 10, self.y - (20 * count))
+                self.output_labels[i].pos = (self.x + self.width - self.output_labels[i].width - 20, self.y - (20 * count))
                 self.output_label_circles[i].pos = (self.x + self.width-7, self.y - (20 * count))
                 count += 1
             
@@ -851,6 +879,54 @@ async def ignition(node):
             "outputs": {
             }
         },
+    "display_output" : {
+        "function_name": "display_output",
+        "import_string" : None,
+        "function_string" : """
+async def display_output(node, user_input, output, instruct_type):
+    app = MDApp.get_running_app()
+    print("Display Output: ", user_input, output)
+    user_text = user_input or "test"
+    response = output or "test"
+    await asyncio.sleep(.25)
+    def update_ui(dt):
+        user_header_text = '[b]User[/b] [size=12][color=#A9A9A9]{}[/color][/size]'.format(app.current_date)
+        bot_header_text = '[b]Bot[/b] [size=12][color=#A9A9A9]{}[/color][/size]'.format(app.current_date)
+        
+        user_message = user_header_text + '\\n' + user_text
+        bot_message = bot_header_text + '\\n' + response
+        
+        user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
+        bot_custom_component = CustomComponent(img_source="images/bot_logo.png", txt=bot_message)
+        
+        grid_layout = app.root.get_screen("some_screen").ids.grid_layout
+
+        # Remove old image component if it exists
+        for child in grid_layout.children[:]:
+            if isinstance(child, CustomImageComponent):
+                grid_layout.remove_widget(child)
+        
+        grid_layout.add_widget(user_custom_component)
+        grid_layout.add_widget(bot_custom_component)
+        
+        if instruct_type == 1:
+            image_component = CustomImageComponent(img_source="images/generated_image.jpeg")
+            grid_layout.add_widget(image_component)
+
+    # Schedule the update_ui function to run on the main thread
+    Clock.schedule_once(update_ui)
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "user_input" : "string",
+            "output" : "string",
+            "instruct_type" : "num",
+        },
+        "outputs": {
+        }
+    },
+
     "select_model" : {
             "function_name": "select_model",
             "import_string" : None,
@@ -907,10 +983,18 @@ async def context(node):
         "import_string" : None,
         "function_string" : """
 async def prompt(node, model=None, user_prompt=None, context=None):
+    app = MDApp.get_running_app()
     print("Prompt")
     print(model, user_prompt, context)
     await asyncio.sleep(.25)
-    return {"output" : user_prompt}
+    user_text = user_prompt
+    instruct_type = app.get_instruct_type(user_text)
+    if instruct_type == 1:
+        app.generate_image_prompt(user_text)
+    # Continue the conversation            
+    response = app.continue_conversation()
+    print("output: ", response)
+    return {"output" : response, "instruct_type" : instruct_type}
         """,
         "description" : None,
         "documentation" : None,
@@ -920,7 +1004,8 @@ async def prompt(node, model=None, user_prompt=None, context=None):
             "context" : "string",
         },
         "outputs": {
-            "output" : "string"
+            "output" : "string",
+            "instruct_type" : "num"
         }
     }
 }
@@ -1375,6 +1460,7 @@ print(\"Added\", {function_name})
         
         mouse_widget = MousePositionWidget(size_hint_y=None, height=40)
         self.layout.add_widget(mouse_widget)
+        #Reset nodes
         """
         generate_node("ignition", pos = [50, 400])
         
@@ -1385,6 +1471,8 @@ print(\"Added\", {function_name})
         generate_node("prompt", pos = [300, 100])
         generate_node("prompt", pos = [300, 200])
         generate_node("prompt", pos = [300, 300])
+        
+        generate_node("display_output", pos = [300, 500])
         """
         #generate_node("prompt", pos = [300, 150])
         
@@ -1500,36 +1588,46 @@ print(\"Added\", {function_name})
             async_nodes[i].trigger_out = []
             for j in node_info[i]["trigger_out"]:
                 async_nodes[i].trigger_out.append(async_nodes[j])
-            print(node_info[i]["trigger_out"])
-            print(async_nodes[i].trigger_out)
+            #print(node_info[i]["trigger_out"])
+            #print(async_nodes[i].trigger_out)
     def new_node(self, instance):
-        node_id = generate_node("ignition", pos = [100, 200])
+        node_id = generate_node("display_output", pos = [100, 200])
         self.layout.add_widget(nodes[node_id])
+
         global added_node
         global nodes_regenerated
         added_node = True
         nodes_regenerated = 0
+        """
+        for i in nodes:
+            self.layout.remove_widget(nodes[i])
+            #self.layout.add_widget(nodes[i])
+        """
+        
         for i in nodes:
             print(i, nodes[i].pos)
             node_info[i]["pos"] = (nodes[i].pos[0], nodes[i].pos[1])
-            #nodes[i].regenerated = True
+            nodes[i].regenerated = True
+        
             #generate_node(node_info[i]["name"], pos = [nodes[i].pos[0], nodes[i].pos[1]], node_id=i)
     async def on_run_press(self):
         #print("Run Pressed")
         # Search for ignition nodes and trigger them once.
+        tasks = []
+        
         for i in node_info:
             if node_info[i]["name"] == "ignition":
                 #print(i, async_nodes[i])
                 try:
                     # Your existing code here...
                     print("someasync: ", async_nodes[i].trigger_out, i)
-                    await async_nodes[i].trigger()
+                    tasks.append(asyncio.create_task(async_nodes[i].trigger()))
                     
                     # Your existing code here...
                 except RecursionError:
                     print("Maximum recursion depth reached. Stopping program.")
                     # Additional cleanup or handling here if needed
-
+        await asyncio.gather(*tasks)
     def on_run_press_wrapper(self, instance):
         def run_coroutine_in_event_loop():
             loop = asyncio.new_event_loop()
@@ -1647,12 +1745,12 @@ class DraggableLabelApp(MDApp):
             file.write(text_to_write)
     
     # Function to continue the conversation
-    def continue_conversation(self):
+    def continue_conversation(self, model=None):
         #print(past_messages)
         # Create the chat completion request with updated past messages
         chat_completion = client.chat.completions.create(
           messages=self.past_messages,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model=model or "mistralai/Mixtral-8x7B-Instruct-v0.1"
         )
         
         response = chat_completion.choices[0].message.content
@@ -1814,7 +1912,30 @@ class DraggableLabelApp(MDApp):
             sys.stdout = sys_stdout
         print(captured_output.get_value())
         return captured_output.get_value()
-            
+        
+    async def on_run_press(self):
+        #print("Run Pressed")
+        # Search for ignition nodes and trigger them once.
+        for i in node_info:
+            if node_info[i]["name"] == "ignition":
+                #print(i, async_nodes[i])
+                try:
+                    # Your existing code here...
+                    print("someasync: ", async_nodes[i].trigger_out, i)
+                    await async_nodes[i].trigger()
+                    
+                    # Your existing code here...
+                except RecursionError:
+                    print("Maximum recursion depth reached. Stopping program.")
+                    # Additional cleanup or handling here if needed
+    
+    def on_run_press_wrapper(self):
+        def run_coroutine_in_event_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.on_run_press())
+
+        threading.Thread(target=run_coroutine_in_event_loop).start()        
     def button_pressed(self):
         text_input = self.root.get_screen("some_screen").ids.text_input
         
@@ -1850,6 +1971,18 @@ class DraggableLabelApp(MDApp):
             # From file
             # In coherererank code
             
+            #Send thing to user_input but first we gotta find the address of the userinput, we can also pass a custom node_id or modify it
+            for i in node_info:
+                #print(i)
+                if node_info[i]["name"] == "user_input":
+                    print(i)
+                    async_nodes[i].output_args.update({"user_input" : user_text})
+                    print(async_nodes[i].output_args)
+            
+            
+            self.on_run_press_wrapper()
+            #display_output_2(user_text)
+            
             # Decides whether to Run Agent "Code Executor"
             """Decide whether to run the following agents:
             code_executor=<True|False>
@@ -1879,6 +2012,7 @@ class DraggableLabelApp(MDApp):
             
             
             #Instruct Type
+            """
             instruct_type = self.get_instruct_type(user_text)
             if instruct_type == 1:
                 self.generate_image_prompt(user_text)
@@ -1904,8 +2038,8 @@ class DraggableLabelApp(MDApp):
             grid_layout.add_widget(bot_custom_component)
             if instruct_type == 1:
                 grid_layout.add_widget(CustomImageComponent(img_source="images/generated_image.jpeg"))
-        
-        
+            """
+    
     def label_clicked(self, label):
         print(f"Label '{label.text}' clicked!")
         
@@ -1941,3 +2075,4 @@ class DraggableLabelApp(MDApp):
         
 if __name__ == '__main__':
     DraggableLabelApp().run()
+    
