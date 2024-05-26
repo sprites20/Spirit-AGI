@@ -34,6 +34,8 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.popup import Popup
 
 from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
@@ -1005,7 +1007,7 @@ async def prompt(node, model=None, user_prompt=None, context=None):
         },
         "outputs": {
             "output" : "string",
-            "instruct_type" : "num"
+            "instruct_type" : "num",
         }
     }
 }
@@ -1191,6 +1193,8 @@ KV = '''
 <DraggableLabelScreen>:
     name: 'draggable_label_screen'
 
+<SelectNodeScreen>
+    name: 'select_node_screen'
 <CustomComponent>:
     background_color: (0.5, 0.5, 0.5, 1)
     orientation: 'horizontal'
@@ -1374,13 +1378,77 @@ ScreenManager:
     id: screen_manager
     DraggableLabelScreen:
     SomeScreen:
+    SelectNodeScreen:
 '''
 
 class CustomComponent(BoxLayout):
     pass
 
+# Custom component with Label on the left and Button on the right
+class NewNodeComponent(BoxLayout):
+    def __init__(self, text, **kwargs):
+        super(NewNodeComponent, self).__init__(orientation='horizontal', **kwargs)
+        self.text = text
+        self.label = Label(text=text, size_hint_x=0.7, halign='left', valign='middle')
+        self.label.bind(size=self.label.setter('text_size'))  # Ensure the text size matches the label size
+        self.button = Button(text="Add", size_hint_x=0.3)
+        self.button.bind(on_press=self.button_on_press)
+        self.add_widget(self.label)
+        self.add_widget(self.button)
+    def button_on_press(self, instance):
+        try:
+            print(self.text)
+            app = MDApp.get_running_app()
+            app.root.get_screen('draggable_label_screen').new_node(node_name=self.text)
+            #app.manager.transition = NoTransition()
+            app.root.current = "draggable_label_screen"
+
+        except Exception as e:
+            print(e)
+
+class SelectNodeScreen(Screen):
+    def __init__(self, **kwargs):
+        super(SelectNodeScreen, self).__init__(**kwargs)
+        
+        # Create the main layout for the screen
+        screen_layout = BoxLayout(orientation='vertical')
+        
+        # Create the back button layout
+        back_box = BoxLayout(size_hint=(1, None), height=40)
+        back_button = Button(text="Back")
+        back_button.bind(on_press=self.back_button_on_press)
+        back_box.add_widget(back_button)
+        
+        # Create the main scroll view
+        main_scroll = ScrollView(size_hint=(1, 1))
+        
+        # Create the main layout inside the scroll view
+        main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
+        main_layout.bind(minimum_height=main_layout.setter('height'))
+        
+        # Add custom components to the main layout
+        for i in node_init:  # Adding multiple custom components
+            custom_component = NewNodeComponent(text=f"{i}")
+            custom_component.size_hint_y = None
+            custom_component.height = 50
+            main_layout.add_widget(custom_component)
+        
+        # Add the main layout to the scroll view
+        main_scroll.add_widget(main_layout)
+        
+        # Add the back button and scroll view to the screen layout
+        screen_layout.add_widget(back_box)
+        screen_layout.add_widget(main_scroll)
+        
+        # Add the screen layout to the screen
+        self.add_widget(screen_layout)
+    def back_button_on_press(self, instance):
+        app = MDApp.get_running_app()
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
 class SomeScreen(Screen):
     pass
+
 
 class CustomImageComponent(BoxLayout):
     def __init__(self, img_source="", **kwargs):
@@ -1505,7 +1573,7 @@ print(\"Added\", {function_name})
         
         add_node = Button(text='Add Node')
         floating_layout.add_widget(add_node)
-        add_node.bind(on_press=self.new_node)
+        add_node.bind(on_press=self.add_node_on_press)
         
         save_nodes = Button(text='Save Nodes')
         floating_layout.add_widget(save_nodes)
@@ -1519,7 +1587,10 @@ print(\"Added\", {function_name})
         root.add_widget(floating_layout)
 
         self.add_widget(root)
-    
+    def add_node_on_press(self, instance):
+        app = MDApp.get_running_app()
+        self.manager.transition = NoTransition()
+        self.manager.current = 'select_node_screen'
     def save_nodes(self, instance):
         #Save line points instead
         print("Line: ", lines)
@@ -1590,8 +1661,8 @@ print(\"Added\", {function_name})
                 async_nodes[i].trigger_out.append(async_nodes[j])
             #print(node_info[i]["trigger_out"])
             #print(async_nodes[i].trigger_out)
-    def new_node(self, instance):
-        node_id = generate_node("display_output", pos = [100, 200])
+    def new_node(self, node_name):
+        node_id = generate_node(node_name, pos = [100, 200])
         self.layout.add_widget(nodes[node_id])
 
         global added_node
@@ -1872,8 +1943,9 @@ class DraggableLabelApp(MDApp):
         else:
             print('Image prompt not found in the text')
             
-        self.generate_image(image_prompt)
+        generated_image_path = self.generate_image(image_prompt)
         self.add_message("system", f"System: You've successfully generated an image for the user, as you are connected to an image generating AI, the generated image prompt: {image_prompt}, you will just say to the user that here's the image, and describe the image.")
+        return generated_image_path
     def generate_image(self, prompt):
         response = requests.post(
             f"https://api.stability.ai/v2beta/stable-image/generate/core",
@@ -1887,13 +1959,16 @@ class DraggableLabelApp(MDApp):
                 "output_format": "jpeg",
             },
         )
-
+        
+        filename = f"images/generated_image_{time.time()}.jpeg"
         if response.status_code == 200:
-            with open("images/generated_image.jpeg", 'wb') as file:
+            with open(filename, 'wb') as file:
                 file.write(response.content)
         else:
             raise Exception(str(response.json()))
-            
+        
+        return filename
+    
     def run_code(self, code):
         # Capture the standard output
         sys_stdout = sys.stdout
@@ -2039,7 +2114,7 @@ class DraggableLabelApp(MDApp):
             if instruct_type == 1:
                 grid_layout.add_widget(CustomImageComponent(img_source="images/generated_image.jpeg"))
             """
-    
+            
     def label_clicked(self, label):
         print(f"Label '{label.text}' clicked!")
         
@@ -2060,6 +2135,7 @@ class DraggableLabelApp(MDApp):
                 text = text_match.group(1)
         except:
             pass
+        
         # Extract the safety ratings
         safety_ratings_match = re.findall(r'category: (.*?)\s+probability: (.*?)\s+}', data, re.DOTALL)
         print(safety_ratings_match)
