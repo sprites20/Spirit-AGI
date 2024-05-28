@@ -19,6 +19,18 @@ And local agent
 Then the AI thingy, add an OCR agent and map agent
 """
 
+
+"""
+NOW:
+
+Save node inits
+
+Load node inits
+Rebind UI components with their names from tree view on_run_press_wrapper
+By iterating through button nodes and binding with their
+
+"""
+
 from kivy.config import Config
 # Set the window size (resolution)
 Config.set('graphics', 'width', str(int(720)))
@@ -30,12 +42,25 @@ from kivy.uix.behaviors import DragBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
+from kivymd.uix.button import MDIconButton
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.textinput import TextInput
+from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.popup import Popup
+from kivy.resources import resource_find
+from kivy.graphics.transformation import Matrix
+from kivy.graphics.opengl import glEnable, glDisable, GL_DEPTH_TEST, glCullFace, GL_BACK
+from kivy.graphics import RenderContext, Callback, PushMatrix, PopMatrix, \
+    Color, Translate, Rotate, Mesh, UpdateNormalMatrix, BindTexture
+from kivy.uix.codeinput import CodeInput
+from kivy.properties import Property
+from objloader import ObjFile
+
+
 
 from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
@@ -183,6 +208,245 @@ def generate_documentation(code_path):
 
         with open(file_path, "w") as file:
             file.write(text_to_write)
+
+class NewNodeScreen(Screen):
+    def __init__(self, **kwargs):
+        super(NewNodeScreen, self).__init__(**kwargs)
+        
+        main_scroll = ScrollView()
+        main_layout = BoxLayout(orientation='vertical')
+        # Create the back button layout
+        back_box = BoxLayout(size_hint=(1, None), height=40)
+        back_button = Button(text="Back", on_press=self.switch_to_screen)
+        switch_button = Button(text="Code Interpreter")
+        save_button = Button(text="Save Node")
+        #back_button.bind(on_press=self.back_button_on_press)
+        back_box.add_widget(back_button)
+        back_box.add_widget(switch_button)
+        back_box.add_widget(save_button)
+        main_layout.add_widget(back_box)
+        
+        name_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        name_label = Label(text="Name", size_hint_x = .25)
+        name_input = TextInput(size_hint_x = .75)
+        #back_button.bind(on_press=self.back_button_on_press)
+        name_box.add_widget(name_label)
+        name_box.add_widget(name_input)
+        main_layout.add_widget(name_box)
+        # Parameters label
+        params_label_box = BoxLayout(size_hint=(1, None), height=40)
+        main_layout.add_widget(params_label_box)
+        
+        
+        # Bbox layout
+        bbox_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=150)
+        
+        # Scrollable input
+        input_box = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
+        input_label_text = Label(text="Inputs")
+        input_label_box = BoxLayout(size_hint=(1, None), height=50)
+        input_label_box.add_widget(input_label_text)
+        input_box.add_widget(input_label_box)
+        
+        self.input_textinput = TextInput(size_hint=(1, None), height=150, hint_text='Example:\n"addend_1" : "num",\n"addend_2" : "num"\n')
+        input_box.add_widget(self.input_textinput)
+        
+        # Scrollable outputs
+        output_box = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
+        output_label_text = Label(text="Outputs")
+        output_label_box = BoxLayout(size_hint=(1, None), height=50)
+        output_label_box.add_widget(output_label_text)
+        output_box.add_widget(output_label_box)
+        
+        self.output_textinput = TextInput(size_hint=(1, None), height=150, hint_text='Example:\n"sum" : "num"\n')
+        output_box.add_widget(self.output_textinput)
+        
+        bbox_layout.add_widget(input_box)
+        bbox_layout.add_widget(output_box)
+        
+        main_layout.add_widget(bbox_layout)
+        
+        button_select_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        main_layout.add_widget(button_select_box)
+        
+        self.description_button = Button(text="Description", on_release=self.switch_to_description)
+        button_select_box.add_widget(self.description_button)
+        
+        self.documentation_button = Button(text="Documentation", on_release=self.switch_to_documentation)
+        button_select_box.add_widget(self.documentation_button)
+        
+        self.code_button = Button(text="Code", on_release=self.switch_to_code)
+        button_select_box.add_widget(self.code_button)
+        
+        
+        
+        # Description Text Box
+        self.description_scroll = ScrollView(size_hint=(1, 0.5))
+        self.description_textinput = TextInput(size_hint=(1, None), multiline=True)
+        
+        # Define a function to calculate height
+        def calculate_height(instance, value):
+            return instance.minimum_height + 1000
+        
+        # Bind the height of the TextInput to its minimum_height + additional_height
+        self.description_textinput.bind(minimum_height=lambda instance, value: setattr(self.description_textinput, 'height', calculate_height(instance, value)))
+        
+        # Add the TextInput to the ScrollView
+        self.description_scroll.add_widget(self.description_textinput)
+        main_layout.add_widget(self.description_scroll)
+        
+        button_generate_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        main_layout.add_widget(button_generate_box)
+        
+        self.description_gen_button = Button(text="Generate from Description")
+        button_generate_box.add_widget(self.description_gen_button)
+        
+        self.documentation_gen_button = Button(text="Generate from Documentation")
+        button_generate_box.add_widget(self.documentation_gen_button)
+        
+        self.code_gen_button = Button(text="Generate from Code")
+        button_generate_box.add_widget(self.code_gen_button)
+        
+        # Scrollable input
+        user_feedback_box = BoxLayout(orientation="horizontal", size_hint=(1, None), height=50)
+        input_label_text = Label(text="User Feedback", size_hint_x=0.75)
+        send_feedback_button = Button(text="Send Feedback", size_hint_x=0.25)
+
+        user_feedback_box.add_widget(input_label_text)
+        user_feedback_box.add_widget(send_feedback_button)
+        main_layout.add_widget(user_feedback_box)
+        
+        self.feedback_textinput = TextInput(size_hint=(1, None), multiline=True, hint_text="Enter your feedback here. Can be a bug, an error, a modification, a fix, etc.")
+        
+        main_layout.add_widget(self.feedback_textinput)
+        #main_scroll.add_widget(main_layout)
+        self.add_widget(main_layout)
+        
+        self.switch_to_description(instance = None)
+    def switch_to_screen(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+        
+    def switch_to_description(self, instance):
+        self._switch_input(TextInput, "This is the description.")
+        self.update_button_colors(self.description_button)
+
+    def switch_to_documentation(self, instance):
+        self._switch_input(TextInput, "This is the documentation.")
+        self.update_button_colors(self.documentation_button)
+
+    def switch_to_code(self, instance):
+        self._switch_input(CodeInput, "print('This is the code')", lexer=PythonLexer())
+        self.update_button_colors(self.code_button)
+
+    def _switch_input(self, input_type, text, **kwargs):
+        # Remove the current text input
+        self.description_scroll.remove_widget(self.description_textinput)
+        # Create a new text input of the given type
+        self.description_textinput = input_type(size_hint=(1, None), multiline=True, **kwargs)
+        self.description_textinput.text = text
+        # Bind the height to adjust based on content
+        self.description_textinput.bind(minimum_height=lambda instance, value: setattr(self.description_textinput, 'height', instance.minimum_height + 1000))
+        # Add the new text input to the scroll view
+        self.description_scroll.add_widget(self.description_textinput)
+
+    def update_button_colors(self, active_button):
+        buttons = [self.description_button, self.documentation_button, self.code_button]
+        for button in buttons:
+            if button == active_button:
+                button.background_color = [1, 0, 0, 1]  # Red
+            else:
+                button.background_color = [1, 1, 1, 1]  # White
+            
+class Renderer(Widget):
+    def __init__(self, **kwargs):
+        self.canvas = RenderContext(compute_normal_mat=True)
+        self.canvas.shader.source = resource_find('simple.glsl')
+        self.scene = ObjFile(resource_find("output.obj"))
+        
+        super(Renderer, self).__init__(**kwargs)
+
+        with self.canvas:
+            Color(1, 1, 1, 1)  # Set background color to white
+            self.cb = Callback(self.setup_gl_context)
+            PushMatrix()
+            self.setup_scene()
+            PopMatrix()
+            self.cb = Callback(self.reset_gl_context)
+            print("Canvas Drawn")
+            
+        Clock.schedule_interval(self.update_glsl, 1 / 60.)
+        
+        # Create a layout to hold the button
+        layout = FloatLayout(size=self.size)
+        self.add_widget(layout)
+
+        # Create a button and add it to the layout
+        self.button = Button(text='Click me!', size_hint=(None, None), size=(100, 50), pos=(10, self.height - 60))
+        self.button.bind(on_release=self.button_callback)
+        layout.add_widget(self.button)
+
+    def button_callback(self, instance):
+        # Callback function for the button
+        print("Button clicked!")
+
+    def setup_gl_context(self, *args):
+        glEnable(GL_DEPTH_TEST)
+
+    def reset_gl_context(self, *args):
+        glDisable(GL_DEPTH_TEST)
+        
+    def update_glsl(self, delta):
+        asp = self.width / float(self.height)
+        proj = Matrix().view_clip(-asp, asp, -1, 1, 1, 100, 1)
+        self.canvas['texture0'] = 1
+        self.canvas['projection_mat'] = proj
+        self.canvas['diffuse_light'] = (1.0, 1.0, 0.8)
+        self.canvas['ambient_light'] = (0.1, 0.1, 0.1)
+        self.rot.angle += delta * 30
+
+    def setup_scene(self):
+        meshes = list(self.scene.objects.values())  # Get all meshes from the scene
+        print(meshes)
+        for mesh in meshes:
+            BindTexture(source='Earth_TEXTURE_CM.tga', index=1)
+            Color(1, 1, 1, 1)
+            PushMatrix()
+            Translate(0, 0, -15)
+            self.rot = Rotate(1, 0, 1, 0)
+            UpdateNormalMatrix()
+            self.mesh = Mesh(
+                vertices=mesh.vertices,
+                indices=mesh.indices,
+                fmt=mesh.vertex_format,
+                mode='triangles',
+            )
+            PopMatrix()
+
+class RenderScreen(Screen):
+    def __init__(self, **kwargs):
+        super(RenderScreen, self).__init__(**kwargs)
+        layout = FloatLayout()
+        top_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, pos_hint={'top': 1})
+        back_button = Button(text='Back', on_press=self.switch_to_screen)
+        top_layout.add_widget(back_button)
+        # Add the 3D renderer to the layout
+        renderer = Renderer(size_hint=(1, 0.8))
+        layout.add_widget(renderer)
+
+        # Add a box on top of the renderer
+        box = Button(text='Box', size_hint=(0.2, 0.1), pos_hint={'x': 0.4, 'y': 0.1})
+        layout.add_widget(top_layout)
+        layout.add_widget(box)
+        
+
+        self.add_widget(layout)
+    def switch_to_screen(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+        
 class AsyncNode:
     def __init__(self, function_name=None, node_id=None, input_addresses=[], output_args={}, trigger_out=[]):
         self.trigger_in = None
@@ -441,7 +705,7 @@ def display_output_2(user_text):
     user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
     bot_custom_component = CustomComponent(img_source="images/bot_logo.png", txt=bot_message)
     
-    grid_layout = app.root.get_screen("some_screen").ids.grid_layout
+    grid_layout = app.root.get_screen("chatbox").ids.grid_layout
     grid_layout.add_widget(user_custom_component)
     #grid_layout.add_widget(CustomImageComponent(img_source="images/bug.png"))
     grid_layout.add_widget(bot_custom_component)
@@ -863,7 +1127,7 @@ class DraggableLabel(DragBehavior, Label):
             self.output_circle_color.rgba = (1, 1, 1, 1)  # Gray color
             print("Connections: ", connections)
         return super(DraggableLabel, self).on_touch_up(touch)
-
+image_components = []
 node_init = {
     "ignition" : {
             "function_name": "ignition",
@@ -885,7 +1149,7 @@ async def ignition(node):
         "function_name": "display_output",
         "import_string" : None,
         "function_string" : """
-async def display_output(node, user_input, output, instruct_type):
+async def display_output(node, user_input, output, instruct_type, generated_image_path):
     app = MDApp.get_running_app()
     print("Display Output: ", user_input, output)
     user_text = user_input or "test"
@@ -901,19 +1165,14 @@ async def display_output(node, user_input, output, instruct_type):
         user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
         bot_custom_component = CustomComponent(img_source="images/bot_logo.png", txt=bot_message)
         
-        grid_layout = app.root.get_screen("some_screen").ids.grid_layout
-
-        # Remove old image component if it exists
-        for child in grid_layout.children[:]:
-            if isinstance(child, CustomImageComponent):
-                grid_layout.remove_widget(child)
+        grid_layout = app.root.get_screen("chatbox").ids.grid_layout
         
         grid_layout.add_widget(user_custom_component)
         grid_layout.add_widget(bot_custom_component)
         
         if instruct_type == 1:
-            image_component = CustomImageComponent(img_source="images/generated_image.jpeg")
-            grid_layout.add_widget(image_component)
+            image_components.append(CustomImageComponent(img_source=generated_image_path))
+            grid_layout.add_widget(image_components[-1])
 
     # Schedule the update_ui function to run on the main thread
     Clock.schedule_once(update_ui)
@@ -924,6 +1183,7 @@ async def display_output(node, user_input, output, instruct_type):
             "user_input" : "string",
             "output" : "string",
             "instruct_type" : "num",
+            "generated_image_path" : "string",
         },
         "outputs": {
         }
@@ -991,12 +1251,13 @@ async def prompt(node, model=None, user_prompt=None, context=None):
     await asyncio.sleep(.25)
     user_text = user_prompt
     instruct_type = app.get_instruct_type(user_text)
+    generated_image_path = ""
     if instruct_type == 1:
-        app.generate_image_prompt(user_text)
+        generated_image_path = app.generate_image_prompt(user_text)
     # Continue the conversation            
     response = app.continue_conversation()
     print("output: ", response)
-    return {"output" : response, "instruct_type" : instruct_type}
+    return {"output" : response, "instruct_type" : instruct_type, "generated_image_path" : generated_image_path}
         """,
         "description" : None,
         "documentation" : None,
@@ -1008,8 +1269,39 @@ async def prompt(node, model=None, user_prompt=None, context=None):
         "outputs": {
             "output" : "string",
             "instruct_type" : "num",
+            "generated_image_path" : "string",
         }
-    }
+    },
+    "file_chooser" : {
+        "function_name": "file_chooser",
+        "import_string" : """
+from tkinter import Tk, filedialog
+""",
+        "function_string" : """
+async def file_chooser(node):
+    root = Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+    root.destroy()
+    if file_path:
+        #self.image.source = file_path
+        return {"filepath" : file_path}
+    else:
+        popup = Popup(title='No file selected',
+                      content=Label(text='No file selected.'),
+                      size_hint=(None, None), size=(400, 200))
+        popup.open()
+    
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        },
+        "outputs": {
+            "filepath" : "string"
+        }
+    },
+    
 }
 
 #def newNode(node):
@@ -1110,7 +1402,7 @@ def generate_node(name, pos = [0,0], input_addresses=None, output_args=None, tri
     """
     
     return node_id
-
+    
 def generate_async_string():
     #Generate Async Node String
     #async_nodes[node_id] = AsyncNode(name, input_addresses=[{"node": source, "arg_name": "a", "target": "a"}, {"node": source, "arg_name": "b", "target" : "b"}], output_args={"a": 5})
@@ -1134,7 +1426,7 @@ def run_code(self, code):
             sys.stdout = sys_stdout
         print(captured_output.get_value())
         return captured_output.get_value()
-
+    
 #So like the LLM will retrieve nodes from files instead of just documents and codes, I shouldnt be documenting this.
 def generate_node_with_llm(inputs, outputs, description, documentation, name):
     #Example:
@@ -1176,7 +1468,7 @@ def generate_node_with_llm(inputs, outputs, description, documentation, name):
     file_path = f"{name}.json"
     with open(file_path, "w") as json_file:
         json_file.write(node_init_json)
-
+    
     print(f"Node init data has been saved to {file_path}")
     #Save documentation separately
     
@@ -1192,9 +1484,18 @@ for i in node_init["add"]["inputs"]:
 KV = '''
 <DraggableLabelScreen>:
     name: 'draggable_label_screen'
+    
+<RenderScreen>
+    name: 'render_screen'
+    
+<NewNodeScreen>
+    name: 'new_node_screen'
 
 <SelectNodeScreen>
     name: 'select_node_screen'
+
+<WidgetTreeScreen>
+    name: 'widget_tree_screen'
 <CustomComponent>:
     background_color: (0.5, 0.5, 0.5, 1)
     orientation: 'horizontal'
@@ -1288,8 +1589,8 @@ KV = '''
             pos: self.pos
             size: self.size
 
-<SomeScreen>:
-    name: "some_screen"
+<ChatboxScreen>:
+    name: "chatbox"
     MDBoxLayout:
         orientation: 'vertical'
         padding: [0,0,0,100]
@@ -1349,6 +1650,7 @@ KV = '''
                 size_hint_x: .2
                 TransparentBoxLayout:
                     MDIconButton:
+                        text: "gemini_logo"
                         pos_hint: {'center_x': .5, 'center_y': 0.5}  # Center the MDIconButton initially
                         size_hint: None, None
                         size: 50, 50
@@ -1361,12 +1663,13 @@ KV = '''
                             size: 50, 50  # Set a fixed size for the Image
                             pos_hint: {'center_x': 0.5, 'center_y': 0.5}  # Center the Image initially
                     MDIconButton:
+                        text: "camera_icon"
                         pos_hint: {'center_x': .5, 'center_y': 0.5}  # Center the MDIconButton initially
                         size_hint: None, None
                         size: 50, 50
                         padding_x: 10
                         #pos: self.parent.center_x - self.width / 2, self.parent.center_y - self.height / 2  # Position the MDIconButton at the center of its parent
-                        on_release: app.button_pressed()  # Define the action to be taken when the button is released
+                        
                         Image:
                             source: "images/camera_icon.png"
                             size_hint: None, None
@@ -1377,8 +1680,11 @@ KV = '''
 ScreenManager:
     id: screen_manager
     DraggableLabelScreen:
-    SomeScreen:
+    ChatboxScreen:
     SelectNodeScreen:
+    RenderScreen:
+    NewNodeScreen:
+    WidgetTreeScreen:
 '''
 
 class CustomComponent(BoxLayout):
@@ -1446,7 +1752,8 @@ class SelectNodeScreen(Screen):
         app = MDApp.get_running_app()
         self.manager.transition = NoTransition()
         self.manager.current = 'draggable_label_screen'
-class SomeScreen(Screen):
+        
+class ChatboxScreen(Screen):
     pass
 
 
@@ -1491,6 +1798,153 @@ class TransparentBoxLayout(BoxLayout):
     pass
 
 
+class MyTreeView(TreeView):
+    def __init__(self, widget_tree_screen, **kwargs):
+        super().__init__(**kwargs)
+        self.widget_tree_screen = widget_tree_screen
+        self.size_hint_y = None
+        self.bind(minimum_height=self.setter('height'))
+        self.bind(selected_node=self.on_node_selected)
+    
+    def clear_widget_tree(self):
+        # Remove all nodes from the TreeView
+        for node in self.root.nodes[:]:
+            self.remove_node(node)
+    
+    def add_widget_tree(self, parent_node, tree):
+        widget_name = str(tree['widget']['name'])
+        if 'reference' in tree['widget'] and (isinstance(tree['widget']['reference'], Button) or isinstance(tree['widget']['reference'], MDIconButton)):
+            widget_name += f" : {tree['widget']['reference'].text}"
+        node = self.add_node(TreeViewLabel(text=widget_name), parent=parent_node)
+        node.widget_ref = tree['widget'].get('reference', None)
+        for child in tree['children']:
+            self.add_widget_tree(node, child)
+
+    def on_node_selected(self, tree_view, node):
+        if node and hasattr(node, 'widget_ref'):
+            widget_ref = node.widget_ref
+            self.widget_tree_screen.display_widget_properties(widget_ref)
+button_nodes = {}
+class WidgetTreeScreen(Screen):
+    def __init__(self, widget_tree=None, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = BoxLayout(orientation='vertical')
+        self.selected_node = None
+        self.selected_widget = None
+        
+        self.top_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, pos_hint={'top': 1})
+        self.back_button = Button(text='Back', on_press=self.switch_to_screen)
+        self.top_layout.add_widget(self.back_button)
+        
+        # Top box with scrollable tree view
+        self.top_box = BoxLayout(orientation='vertical', size_hint_y=0.7)
+        self.scroll_view = ScrollView()
+        self.tree_view = MyTreeView(widget_tree_screen=self, root_options=dict(text='Widget Tree'), hide_root=False)
+        self.scroll_view.add_widget(self.tree_view)
+        self.top_box.add_widget(self.scroll_view)
+        
+        # Bottom box with scrollable TextInput
+        self.bottom_box = BoxLayout(orientation='vertical', size_hint_y=0.3)
+        self.button_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        self.property_label = Label(text="Properties", size_hint_x=0.75)
+        self.create_node_label = Button(text="Create Node", size_hint_x=.25, on_press=self.create_node)
+        self.text_input = TextInput(readonly=True, multiline=True, size_hint_y=None)
+        self.text_scroll = ScrollView()
+        self.bottom_box.add_widget(self.button_box)
+        self.text_scroll.add_widget(self.text_input)
+        self.bottom_box.add_widget(self.text_scroll)
+        
+        self.button_box.add_widget(self.property_label)
+        self.button_box.add_widget(self.create_node_label)
+        
+        # Add both boxes to the main layout
+        self.layout.add_widget(self.top_layout)
+        self.layout.add_widget(self.top_box)
+        self.layout.add_widget(self.bottom_box)
+        self.add_widget(self.layout)
+
+        if widget_tree:
+            self.update_widget_tree(widget_tree)
+    def switch_to_screen(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+    
+    
+    def update_widget_tree(self, widget_tree):
+        #self.tree_view.clear_widgets()
+        self.tree_view.add_widget_tree(None, widget_tree)
+        
+    def create_node(self, instance):
+        if isinstance(self.selected_widget, Button) or isinstance(self.selected_widget, MDIconButton) and self.selected_node not in button_nodes:
+            button_nodes[self.selected_node] = self.selected_widget
+            print(self.selected_widget, self.selected_node)
+            # Bind the button to a lambda function with a variable
+            self.selected_widget.bind(on_press=lambda instance, node=self.selected_node: self.on_run_press_wrapper(instance, node))
+            print("Bound Node")
+            node_init[self.selected_node] = {
+                "function_name": self.selected_node,
+                "import_string" : None,
+                "function_string" : None,
+                "description" : None,
+                "documentation" : None,
+                "inputs" : {
+                },
+                "outputs": {
+                }
+            }
+            print(node_init[self.selected_node])
+            self.parent.get_screen('draggable_label_screen').new_node(node_name=self.selected_node, new_node_id=self.selected_node)
+            print(nodes[self.selected_node])
+            self.manager.transition = NoTransition()
+            self.manager.current = 'draggable_label_screen'
+    async def on_run_press(self, node):
+        #print("Run Pressed")
+        # Search for ignition nodes and trigger them once.
+        tasks = []
+        print("Running: ", node)
+        print(nodes[node])
+        for i in node_info:
+            if node_info[i]["name"] == node:
+                #print(i, async_nodes[i])
+                try:
+                    # Your existing code here...
+                    print("someasync: ", async_nodes[i].trigger_out, i)
+                    tasks.append(asyncio.create_task(async_nodes[i].trigger()))
+                    
+                    # Your existing code here...
+                except RecursionError:
+                    print("Maximum recursion depth reached. Stopping program.")
+                    # Additional cleanup or handling here if needed
+        await asyncio.gather(*tasks)
+        
+    def on_run_press_wrapper(self, instance, node):
+        def run_coroutine_in_event_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.on_run_press(node))
+
+        threading.Thread(target=run_coroutine_in_event_loop).start()    
+    def display_widget_properties(self, widget):
+        self.text_input.text = ""
+        print(widget)
+        for attr_name in dir(widget):
+            if not attr_name.startswith('_'):
+                try:
+                    value = getattr(widget, attr_name)
+                    if not callable(value):
+                        self.text_input.text += f"{attr_name}: {value}\n"
+                        if attr_name == "text":
+                            self.selected_node = f"Button : {value}"
+                            self.selected_widget = widget
+                            #Create a node_init of name
+                            #Generate bindings
+                            
+                            pass
+                except Exception as e:
+                    self.text_input.text += f"{attr_name}: Could not retrieve value ({e})\n"
+        self.text_input.height = max(200, self.text_input.minimum_height)
+
 class DraggableLabelScreen(Screen):
     def __init__(self, **kwargs):
         super(DraggableLabelScreen, self).__init__(**kwargs)
@@ -1517,6 +1971,10 @@ print("Updated function string")
 functions.update({{\"{function_name}\": {function_name}}})
 print(\"Added\", {function_name})
             """
+            try:
+                exec(node_init[i]["import_string"], globals())
+            except:
+                pass
             exec(node_init[i]["function_string"], globals())
             exec(formatted_string, globals())
         self.layout = BoxLayout(orientation='vertical')
@@ -1529,7 +1987,7 @@ print(\"Added\", {function_name})
         mouse_widget = MousePositionWidget(size_hint_y=None, height=40)
         self.layout.add_widget(mouse_widget)
         #Reset nodes
-        """
+        
         generate_node("ignition", pos = [50, 400])
         
         generate_node("select_model", pos = [50, 300])
@@ -1537,11 +1995,9 @@ print(\"Added\", {function_name})
         generate_node("user_input", pos = [50, 100])
         
         generate_node("prompt", pos = [300, 100])
-        generate_node("prompt", pos = [300, 200])
-        generate_node("prompt", pos = [300, 300])
         
         generate_node("display_output", pos = [300, 500])
-        """
+        
         #generate_node("prompt", pos = [300, 150])
         
         print("printing nodes")
@@ -1558,14 +2014,16 @@ print(\"Added\", {function_name})
         
         # Floating layout
         top_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, pos_hint={'top': 1})
-        back_button = Button(text='Back')
+        back_button = Button(text='Chatbot')
         top_layout.add_widget(back_button)
+        render_button = Button(text='Renderer', on_press=self.switch_to_renderer)
+        top_layout.add_widget(render_button)
         # Bind button press to switch_to_screen method
         back_button.bind(on_press=self.switch_to_screen)
         
         root.add_widget(top_layout)
         # Floating layout
-        floating_layout = BoxLayout(orientation='vertical', size_hint=(None, None), pos=(0, 0))
+        floating_layout = BoxLayout(orientation='horizontal', size_hint=(1, .05), pos=(0, 0))
         
         run_code = Button(text='Run Code')
         floating_layout.add_widget(run_code)
@@ -1574,6 +2032,14 @@ print(\"Added\", {function_name})
         add_node = Button(text='Add Node')
         floating_layout.add_widget(add_node)
         add_node.bind(on_press=self.add_node_on_press)
+        
+        new_node_button = Button(text='New Node')
+        floating_layout.add_widget(new_node_button)
+        new_node_button.bind(on_press=self.new_node_on_press)
+        
+        object_explorer_button = Button(text='Object Explorer')
+        floating_layout.add_widget(object_explorer_button)
+        object_explorer_button.bind(on_press=self.object_explorer_on_press)
         
         save_nodes = Button(text='Save Nodes')
         floating_layout.add_widget(save_nodes)
@@ -1587,10 +2053,69 @@ print(\"Added\", {function_name})
         root.add_widget(floating_layout)
 
         self.add_widget(root)
-    def add_node_on_press(self, instance):
+        
+    def generate_widget_tree(self, widget, level=0):
+        tree = {
+            'widget': {
+                'name': widget.__class__.__name__,
+                'properties': {},
+                'reference': widget
+            },
+            'children': []
+        }
+        for attr_name in dir(widget):
+            if not attr_name.startswith('_'):
+                try:
+                    value = getattr(widget, attr_name)
+                    if not callable(value):
+                        tree['widget']['properties'][attr_name] = value
+                except Exception as e:
+                    tree['widget']['properties'][attr_name] = f"Could not retrieve value ({e})"
+
+        for child in widget.children:
+            tree['children'].append(self.generate_widget_tree(child, level + 1))
+
+        return tree
+
+
+    def print_widget_tree(self, tree, level=0):
+        indent = '  ' * level
+        print(f"{indent}{tree['widget']['name']}")
+        for key, value in tree['widget']['properties'].items():
+            print(f"{indent}  {key}: {value}")
+        for child in tree['children']:
+            self.print_widget_tree(child, level + 1)
+
+    def object_explorer_on_press(self, instance):
+        """
+        for screen in self.parent.screens:
+            widget_tree = self.generate_widget_tree(screen)
+            self.print_widget_tree(widget_tree)
+        """
+        
+        screen = self.parent
+        self.parent.get_screen('widget_tree_screen').tree_view.clear_widget_tree()
+        for screen2 in self.parent.screens:
+            print(screen2)
+            widget_tree = self.generate_widget_tree(screen2)
+            self.parent.get_screen('widget_tree_screen').update_widget_tree(widget_tree)
+        #self.print_widget_tree(widget_tree)
+        
+        #print(widget_tree)
+        self.manager.transition = NoTransition()
+        
+        self.manager.current = 'widget_tree_screen'
+        
+    def new_node_on_press(self, instance):
         app = MDApp.get_running_app()
         self.manager.transition = NoTransition()
+        self.manager.current = 'new_node_screen'
+        
+    def add_node_on_press(self, instance):
+        #app = MDApp.get_running_app()
+        self.manager.transition = NoTransition()
         self.manager.current = 'select_node_screen'
+        
     def save_nodes(self, instance):
         #Save line points instead
         print("Line: ", lines)
@@ -1613,6 +2138,8 @@ print(\"Added\", {function_name})
         f = open("node_info.json", "w")
         f.write(json.dumps(node_info))
         f.close()
+        
+        #Save UI component screens
         
     def load_nodes(self, instance):
         #Load lines
@@ -1640,19 +2167,33 @@ print(\"Added\", {function_name})
         #node_info = {}
         #nodes = {}
         f = open("node_info.json", "r")
-        node_info = json.load(f)
+        node_info_temp = json.load(f)
         #print("Connections: ", node_info)
         #print("Node Info: ", node_info)
         #Generate Nodes with node infos
-        print("Node Info: ", node_info)
-        for i in node_info:
+        print("Node Info: ", node_info_temp)
+        for i in node_info_temp:
             #(name, pos = [0,0], input_addresses=[], output_args={}, trigger_out=[], node_id=None)
             #print(i)
             #print(node_info[i]["name"])
             #print(node_info[i]["pos"])
-            generate_node(name=node_info[i]["name"], pos=node_info[i]["pos"], input_addresses=node_info[i]["input_addresses"], output_args=node_info[i]["output_args"], trigger_out=node_info[i]["trigger_out"], node_id=node_info[i]["node_id"])
+            generate_node(name=node_info_temp[i]["name"], pos=node_info_temp[i]["pos"], input_addresses=node_info_temp[i]["input_addresses"], output_args=node_info_temp[i]["output_args"], trigger_out=node_info_temp[i]["trigger_out"], node_id=node_info_temp[i]["node_id"])
+            node_info[i] = copy.deepcopy(node_info_temp[i])
+            #Rebind those starting in Button or MDButton with tree view wrapper with node name variable
+            #But first find the reference, iterate through widget_tree
+            """
+            screen_two = screen_manager.get_screen('screen_two')
+            button_text = 'Button 5'
+            for widget in screen_two.walk():
+            if isinstance(widget, Button) and widget.text == button_text:
+                print(f"Found button with text '{button_text}' in ScreenTwo, reference: {widget}")
+                break
+            """
         for i in nodes:
-            self.layout.add_widget(nodes[i])
+            try:
+                self.layout.add_widget(nodes[i])
+            except:
+                pass
         print("Nodes: ", nodes)
         #Update trigger_connections located in AsyncNode trigger_out
         for i in async_nodes:
@@ -1661,8 +2202,9 @@ print(\"Added\", {function_name})
                 async_nodes[i].trigger_out.append(async_nodes[j])
             #print(node_info[i]["trigger_out"])
             #print(async_nodes[i].trigger_out)
-    def new_node(self, node_name):
-        node_id = generate_node(node_name, pos = [100, 200])
+            
+    def new_node(self, node_name, new_node_id=None):
+        node_id = generate_node(node_name, pos = [100, 200], node_id=new_node_id)
         self.layout.add_widget(nodes[node_id])
 
         global added_node
@@ -1681,6 +2223,7 @@ print(\"Added\", {function_name})
             nodes[i].regenerated = True
         
             #generate_node(node_info[i]["name"], pos = [nodes[i].pos[0], nodes[i].pos[1]], node_id=i)
+    
     async def on_run_press(self):
         #print("Run Pressed")
         # Search for ignition nodes and trigger them once.
@@ -1699,6 +2242,7 @@ print(\"Added\", {function_name})
                     print("Maximum recursion depth reached. Stopping program.")
                     # Additional cleanup or handling here if needed
         await asyncio.gather(*tasks)
+        
     def on_run_press_wrapper(self, instance):
         def run_coroutine_in_event_loop():
             loop = asyncio.new_event_loop()
@@ -1713,10 +2257,14 @@ print(\"Added\", {function_name})
         pass
     
     def switch_to_screen(self, instance):
-        # Switch to 'some_screen'
+        # Switch to 'chatbox'
         self.manager.transition = NoTransition()
-        self.manager.current = 'some_screen'
+        self.manager.current = 'chatbox'
         
+    def switch_to_renderer(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'render_screen'
 class DraggableLabelApp(MDApp):
     past_messages = []
     def build(self):
@@ -1727,6 +2275,7 @@ class DraggableLabelApp(MDApp):
         screen_manager = self.root.ids.screen_manager
         screen_manager.transition = NoTransition()
         screen_manager.current = screen_name
+        
     @property
     def current_date(self):
         # Get the current date and time
@@ -1980,7 +2529,7 @@ class DraggableLabelApp(MDApp):
             exec(code, globals())  # Use globals() to ensure Kivy classes are accessible
         except Exception as e:
             # Display any exception that occurs during execution
-            self.root.get_screen("some_screen").ids.output_text.text = str(e)
+            self.root.get_screen("chatbox").ids.output_text.text = str(e)
             return
         finally:
             # Restore the original standard output
@@ -2012,7 +2561,7 @@ class DraggableLabelApp(MDApp):
 
         threading.Thread(target=run_coroutine_in_event_loop).start()        
     def button_pressed(self):
-        text_input = self.root.get_screen("some_screen").ids.text_input
+        text_input = self.root.get_screen("chatbox").ids.text_input
         
         user_text = text_input.text
         
@@ -2035,7 +2584,7 @@ class DraggableLabelApp(MDApp):
             user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
             gemini_custom_component = CustomComponent(img_source="images/gemini_logo.png", txt=gemini_message)
             
-            grid_layout = self.root.get_screen("some_screen").ids.grid_layout
+            grid_layout = self.root.get_screen("chatbox").ids.grid_layout
             grid_layout.add_widget(user_custom_component)
             grid_layout.add_widget(gemini_custom_component)
         if use_model == "together":
@@ -2107,7 +2656,7 @@ class DraggableLabelApp(MDApp):
             user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
             bot_custom_component = CustomComponent(img_source="images/bot_logo.png", txt=bot_message)
             
-            grid_layout = self.root.get_screen("some_screen").ids.grid_layout
+            grid_layout = self.root.get_screen("chatbox").ids.grid_layout
             grid_layout.add_widget(user_custom_component)
             #grid_layout.add_widget(CustomImageComponent(img_source="images/bug.png"))
             grid_layout.add_widget(bot_custom_component)
