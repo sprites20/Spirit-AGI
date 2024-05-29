@@ -32,9 +32,6 @@ By iterating through button nodes and binding with their
 """
 
 from kivy.config import Config
-# Set the window size (resolution)
-Config.set('graphics', 'width', str(int(720)))
-Config.set('graphics', 'height', str(int(1600/2)))
 
 from kivy.lang import Builder
 from kivymd.app import MDApp
@@ -60,8 +57,6 @@ from kivy.uix.codeinput import CodeInput
 from kivy.properties import Property
 from objloader import ObjFile
 
-
-
 from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
 from kivy.clock import Clock
@@ -74,24 +69,22 @@ from pathlib import Path
 
 from datetime import datetime, timedelta
 
-import google.generativeai as genai
+#import google.generativeai as genai
 from io import StringIO
 
+"""
 from llama_index.core import ServiceContext, VectorStoreIndex
 from llama_index.llms.cohere import Cohere
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.postprocessor.cohere_rerank import CohereRerank
-
+"""
 from bs4 import BeautifulSoup
 from nltk.tokenize import sent_tokenize
-
-from transformers import AutoTokenizer, AutoModel
 
 import sys
 import time
 import asyncio
 import json
-import torch
 import numpy as np
 import os
 import re
@@ -101,7 +94,7 @@ import copy
 
 #Retrieve Code Documentation
 API_KEY = "BXyTrgsV2PMbRuvDYu9ZwfLHObeTkR4SvPoZAvtf"
-
+"""
 # Create the embedding model
 embed_model = CohereEmbedding(
     cohere_api_key=API_KEY,
@@ -114,7 +107,7 @@ service_context = ServiceContext.from_defaults(
     llm=Cohere(api_key=API_KEY, model="command"),
     embed_model=embed_model
 )
-
+"""
 user_prompt = "Function to print nth fibonacci number."
 
 TOGETHER_API_KEY = "5391e02b5fbffcdba1e637eada04919a5a1d9c9dfa5795eafe66b6d464d761ce"
@@ -124,9 +117,10 @@ client = OpenAI(
   base_url='https://api.together.xyz/v1',
 )
 
+"""
 genai.configure(api_key='AIzaSyDc0qXo8TxNxv7xAksgwdWtP0Fl1ai6heg')
 model = genai.GenerativeModel('gemini-pro')
-
+"""
 use_logo = "bot"
 
 
@@ -460,10 +454,6 @@ class AsyncNode:
     def change_to_gray(self):
         nodes[self.node_id].label_color.rgba = (0.5, 0.5, 0.5, 1)
     async def trigger(self):
-        if self.trigger_in is not None:
-            #print("Triggering input node")
-            await self.trigger_in.trigger()
-
         # Get the function from the dictionary based on the function_name
         function_to_call = functions.get(self.function_name)
         if function_to_call:
@@ -502,7 +492,11 @@ class AsyncNode:
             #print(f"Triggering output node {node.function_name}")
             await node.trigger()
         """
-        tasks = [asyncio.create_task(node.trigger()) for node in self.trigger_out]
+        async def trigger_node(node):
+            node.trigger_in = self.node_id
+            print(node, node.trigger_in)
+            await node.trigger()
+        tasks = [asyncio.create_task(trigger_node(node)) for node in self.trigger_out]
         await asyncio.gather(*tasks)
 
 class MousePositionWidget(Widget):
@@ -1129,6 +1123,41 @@ class DraggableLabel(DragBehavior, Label):
         return super(DraggableLabel, self).on_touch_up(touch)
 image_components = []
 node_init = {
+    "file_chooser" : {
+        "function_name": "file_chooser",
+        "import_string" : """
+from tkinter import Tk, filedialog
+""",
+        "function_string" : """
+async def file_chooser(node):
+    print(node, node.node_id, node.output_args)
+    if node.trigger_in.startswith("display_output"):
+        node.output_args = {}
+        return {"filepath" : None}
+    elif node.trigger_in == "Button : camera_icon":
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+        root.destroy()
+        def pop(dt):
+            popup = Popup(title='No file selected',
+                          content=Label(text='No file selected.'),
+                          size_hint=(None, None), size=(400, 200))
+            popup.open()
+        if file_path:
+            #self.image.source = file_path
+            return {"filepath" : file_path}
+        else:
+            Clock.schedule_once(pop)
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        },
+        "outputs": {
+            "filepath" : "string"
+        }
+    },
     "ignition" : {
             "function_name": "ignition",
             "import_string" : None,
@@ -1149,7 +1178,7 @@ async def ignition(node):
         "function_name": "display_output",
         "import_string" : None,
         "function_string" : """
-async def display_output(node, user_input, output, instruct_type, generated_image_path):
+async def display_output(node, user_input, output, instruct_type, generated_image_path, user_image):
     app = MDApp.get_running_app()
     print("Display Output: ", user_input, output)
     user_text = user_input or "test"
@@ -1168,11 +1197,14 @@ async def display_output(node, user_input, output, instruct_type, generated_imag
         grid_layout = app.root.get_screen("chatbox").ids.grid_layout
         
         grid_layout.add_widget(user_custom_component)
+        if user_image != None:
+            print(user_image)
+            grid_layout.add_widget(CustomImageComponent(img_source=user_image))
         grid_layout.add_widget(bot_custom_component)
         
         if instruct_type == 1:
-            image_components.append(CustomImageComponent(img_source=generated_image_path))
-            grid_layout.add_widget(image_components[-1])
+            #image_components.append(CustomImageComponent(img_source=generated_image_path))
+            grid_layout.add_widget(CustomImageComponent(img_source=generated_image_path))
 
     # Schedule the update_ui function to run on the main thread
     Clock.schedule_once(update_ui)
@@ -1184,6 +1216,7 @@ async def display_output(node, user_input, output, instruct_type, generated_imag
             "output" : "string",
             "instruct_type" : "num",
             "generated_image_path" : "string",
+            "user_image" : "string",
         },
         "outputs": {
         }
@@ -1270,35 +1303,6 @@ async def prompt(node, model=None, user_prompt=None, context=None):
             "output" : "string",
             "instruct_type" : "num",
             "generated_image_path" : "string",
-        }
-    },
-    "file_chooser" : {
-        "function_name": "file_chooser",
-        "import_string" : """
-from tkinter import Tk, filedialog
-""",
-        "function_string" : """
-async def file_chooser(node):
-    root = Tk()
-    root.withdraw()
-    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
-    root.destroy()
-    if file_path:
-        #self.image.source = file_path
-        return {"filepath" : file_path}
-    else:
-        popup = Popup(title='No file selected',
-                      content=Label(text='No file selected.'),
-                      size_hint=(None, None), size=(400, 200))
-        popup.open()
-    
-        """,
-        "description" : None,
-        "documentation" : None,
-        "inputs" : {
-        },
-        "outputs": {
-            "filepath" : "string"
         }
     },
     
@@ -1893,6 +1897,7 @@ class WidgetTreeScreen(Screen):
                 "outputs": {
                 }
             }
+            #ui_node_screens[self.selected_node] = 
             print(node_init[self.selected_node])
             self.parent.get_screen('draggable_label_screen').new_node(node_name=self.selected_node, new_node_id=self.selected_node)
             print(nodes[self.selected_node])
@@ -1903,7 +1908,6 @@ class WidgetTreeScreen(Screen):
         # Search for ignition nodes and trigger them once.
         tasks = []
         print("Running: ", node)
-        print(nodes[node])
         for i in node_info:
             if node_info[i]["name"] == node:
                 #print(i, async_nodes[i])
@@ -1987,17 +1991,18 @@ print(\"Added\", {function_name})
         mouse_widget = MousePositionWidget(size_hint_y=None, height=40)
         self.layout.add_widget(mouse_widget)
         #Reset nodes
-        
+        """
         generate_node("ignition", pos = [50, 400])
         
         generate_node("select_model", pos = [50, 300])
-        generate_node("context", pos = [50, 200])
-        generate_node("user_input", pos = [50, 100])
+        generate_node("user_input", pos = [50, 200])
+        generate_node("context", pos = [50, 100])
+        
         
         generate_node("prompt", pos = [300, 100])
         
         generate_node("display_output", pos = [300, 500])
-        
+        """
         #generate_node("prompt", pos = [300, 150])
         
         print("printing nodes")
@@ -2139,7 +2144,12 @@ print(\"Added\", {function_name})
         f.write(json.dumps(node_info))
         f.close()
         
-        #Save UI component screens
+        #Save node_init too
+        print("Node Init: ")
+        f = open("node_init.json", "w")
+        f.write(json.dumps(node_init))
+        f.close()
+        #Save UI component screen references, but first create separate reference, especially which screen it is
         
     def load_nodes(self, instance):
         #Load lines
@@ -2162,6 +2172,15 @@ print(\"Added\", {function_name})
         connections = json.load(f)
         print("Connections: ", connections)
         
+
+        #Load node_init
+
+        global node_init
+        f = open("node_init.json", "r")
+        node_init_temp = json.load(f)
+        for i in node_init_temp:
+            node_init[i] = copy.deepcopy(node_init_temp[i])
+        
         global node_info
         #Load node infos
         #node_info = {}
@@ -2170,25 +2189,31 @@ print(\"Added\", {function_name})
         node_info_temp = json.load(f)
         #print("Connections: ", node_info)
         #print("Node Info: ", node_info)
+        
         #Generate Nodes with node infos
+
+        
         print("Node Info: ", node_info_temp)
         for i in node_info_temp:
             #(name, pos = [0,0], input_addresses=[], output_args={}, trigger_out=[], node_id=None)
-            #print(i)
+            print(i)
             #print(node_info[i]["name"])
             #print(node_info[i]["pos"])
             generate_node(name=node_info_temp[i]["name"], pos=node_info_temp[i]["pos"], input_addresses=node_info_temp[i]["input_addresses"], output_args=node_info_temp[i]["output_args"], trigger_out=node_info_temp[i]["trigger_out"], node_id=node_info_temp[i]["node_id"])
             node_info[i] = copy.deepcopy(node_info_temp[i])
             #Rebind those starting in Button or MDButton with tree view wrapper with node name variable
-            #But first find the reference, iterate through widget_tree
-            """
-            screen_two = screen_manager.get_screen('screen_two')
-            button_text = 'Button 5'
-            for widget in screen_two.walk():
-            if isinstance(widget, Button) and widget.text == button_text:
-                print(f"Found button with text '{button_text}' in ScreenTwo, reference: {widget}")
-                break
-            """
+            #But first find the reference, iterate through widget_tree and find element of that name
+            #If starts with Button : get the screen reference and find the element there
+            
+            if i.startswith("Button : "):
+                for screen in self.parent.screens:
+                    button_text = i.replace("Button : ", "")
+                    for widget in screen.walk():
+                        if (isinstance(widget, Button) or isinstance(widget, MDIconButton)) and widget.text == button_text:
+                            print(f"Found button with text '{button_text}' in ScreenTwo, reference: {widget}")
+                            widget.bind(on_press=lambda instance, node=i: screen.on_run_press_wrapper(instance, node))
+                            break
+            
         for i in nodes:
             try:
                 self.layout.add_widget(nodes[i])
@@ -2372,7 +2397,7 @@ class DraggableLabelApp(MDApp):
           messages=self.past_messages,
           model=model or "mistralai/Mixtral-8x7B-Instruct-v0.1"
         )
-        
+        print(self.past_messages)
         response = chat_completion.choices[0].message.content
         # Update the past messages list with the new chat completion
         response = response.replace("\\_", "_")
@@ -2381,6 +2406,7 @@ class DraggableLabelApp(MDApp):
         # Print the assistant's response
         print("Bot: ", response)
         return response
+    """
     def retrieve_code(self, user_prompt):
         file_path = "somefibo.py_doc.txt"  # Specify the path to your file
         with open(file_path, "r") as file:
@@ -2404,6 +2430,7 @@ class DraggableLabelApp(MDApp):
 
         print(response)
         return response
+    """
     def extract_python_code(self, text):
         # Regular expression to match the Python code block
         pattern = r"```python\n(.*?)\n```"
@@ -2568,6 +2595,7 @@ class DraggableLabelApp(MDApp):
         #self.generate_documentation("somefibo.py")
         use_model = "together"
         if use_model == "gemini":
+            """
             response = model.generate_content(user_text)
             result = str(response._result)
             parsed_result = self.gemini_parse_results(result)
@@ -2583,7 +2611,7 @@ class DraggableLabelApp(MDApp):
             
             user_custom_component = CustomComponent(img_source="images/user_logo.png", txt=user_message)
             gemini_custom_component = CustomComponent(img_source="images/gemini_logo.png", txt=gemini_message)
-            
+            """
             grid_layout = self.root.get_screen("chatbox").ids.grid_layout
             grid_layout.add_widget(user_custom_component)
             grid_layout.add_widget(gemini_custom_component)
@@ -2675,7 +2703,7 @@ class DraggableLabelApp(MDApp):
         layout.add_widget(Button(text='Action 2'))
         popup.content = layout
         popup.open()
-        
+    """
     def gemini_parse_results(self, data):
         text = ""
         try:
@@ -2697,7 +2725,7 @@ class DraggableLabelApp(MDApp):
             'safety_ratings': safety_ratings
         }
         return result
-        
+    """
 if __name__ == '__main__':
     DraggableLabelApp().run()
     
