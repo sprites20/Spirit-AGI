@@ -1,14 +1,12 @@
 beautifulsoup4==4.12.3
-cohere==5.5.0
 kivy==2.3.0
 Kivy_examples==2.2.1
 kivymd==1.1.1
-llama_index==0.10.37
+llama_index==0.10.39
 nltk==3.8.1
 numpy==1.25.2
-openai==1.30.1
-protobuf==5.26.1
-pytube==15.0.0
+openai==1.30.4
+protobuf==5.27.0
 requests==2.31.0
 torch==2.0.0+cu117
 transformers==4.40.1
