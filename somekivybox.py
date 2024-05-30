@@ -456,15 +456,22 @@ class AsyncNode:
     async def trigger(self):
         # Get the function from the dictionary based on the function_name
         function_to_call = functions.get(self.function_name)
+        print(self, self.node_id)
         if function_to_call:
             #print(f"Calling function {self.function_name}")
             # Fetch input_args from input_addresses
             input_args = {}
+            print(self.input_addresses)
             for address in self.input_addresses:
+                
                 node = address.get("node")
                 arg_name = address.get("arg_name")
                 target = address.get("target")
-                input_args[target] = node.output_args.get(arg_name)
+                try:
+                    input_args[target] = node.output_args.get(arg_name)
+                except Exception as e:
+                    print(node, arg_name, target, e)
+                print(input_args[target])
                 #Here replace thing in output args with whatever queued. If none use same thing
             #print("Input Addresses: ", self.input_addresses)
             #print("Input Args", input_args)
@@ -1132,8 +1139,8 @@ from tkinter import Tk, filedialog
 async def file_chooser(node):
     print(node, node.node_id, node.output_args)
     if node.trigger_in.startswith("display_output"):
-        node.output_args = {}
-        return {"filepath" : None}
+        node.output_args = {"user_image" : None}
+        return {"user_image" : None}
     elif node.trigger_in == "Button : camera_icon":
         root = Tk()
         root.withdraw()
@@ -1146,7 +1153,7 @@ async def file_chooser(node):
             popup.open()
         if file_path:
             #self.image.source = file_path
-            return {"filepath" : file_path}
+            return {"user_image" : file_path}
         else:
             Clock.schedule_once(pop)
         """,
@@ -1155,7 +1162,7 @@ async def file_chooser(node):
         "inputs" : {
         },
         "outputs": {
-            "filepath" : "string"
+            "user_image" : "string"
         }
     },
     "ignition" : {
@@ -1197,6 +1204,7 @@ async def display_output(node, user_input, output, instruct_type, generated_imag
         grid_layout = app.root.get_screen("chatbox").ids.grid_layout
         
         grid_layout.add_widget(user_custom_component)
+        print(user_image)
         if user_image != None:
             print(user_image)
             grid_layout.add_widget(CustomImageComponent(img_source=user_image))
@@ -1386,10 +1394,14 @@ def generate_node(name, pos = [0,0], input_addresses=None, output_args=None, tri
     
     print("Inputs", inputs, input_addresses)
     for i in inputs:
-        #print(i)
+        print(i["node"])
+        for j in async_nodes:
+            print(j)
+        
         if i["node"] not in async_nodes:
-            async_nodes[i["node"]] = None
-        print("someasync: ", async_nodes[i["node"]])
+            async_nodes[i["node"]] = AsyncNode(name, input_addresses=inputs, output_args=outputs, trigger_out=t_out, node_id=node_id)
+            
+        print("someasync: ", async_nodes[i["node"]], node_id)
         async_nodes[node_id].input_addresses.append({"node" : async_nodes[i["node"]], "arg_name" : i["arg_name"], "target" : i["target"]})
     async_nodes[node_id].output_args = outputs
     for i in t_out:
@@ -1709,7 +1721,7 @@ class NewNodeComponent(BoxLayout):
         try:
             print(self.text)
             app = MDApp.get_running_app()
-            app.root.get_screen('draggable_label_screen').new_node(node_name=self.text)
+            app.root.get_screen('draggable_label_screen').new_node(node_name=self.text, new_node_id=None)
             #app.manager.transition = NoTransition()
             app.root.current = "draggable_label_screen"
 
@@ -1987,7 +1999,6 @@ print(\"Added\", {function_name})
     def build(self):
         root = FloatLayout()
         
-        
         mouse_widget = MousePositionWidget(size_hint_y=None, height=40)
         self.layout.add_widget(mouse_widget)
         #Reset nodes
@@ -2195,6 +2206,8 @@ print(\"Added\", {function_name})
         
         print("Node Info: ", node_info_temp)
         for i in node_info_temp:
+            print(i)
+        for i in node_info_temp:
             #(name, pos = [0,0], input_addresses=[], output_args={}, trigger_out=[], node_id=None)
             print(i)
             #print(node_info[i]["name"])
@@ -2228,7 +2241,7 @@ print(\"Added\", {function_name})
             #print(node_info[i]["trigger_out"])
             #print(async_nodes[i].trigger_out)
             
-    def new_node(self, node_name, new_node_id=None):
+    def new_node(self, node_name, new_node_id):
         node_id = generate_node(node_name, pos = [100, 200], node_id=new_node_id)
         self.layout.add_widget(nodes[node_id])
 
