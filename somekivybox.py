@@ -56,11 +56,13 @@ from kivy.graphics import RenderContext, Callback, PushMatrix, PopMatrix, \
 from kivy.uix.codeinput import CodeInput
 from kivy.properties import Property
 from objloader import ObjFile
-
+from tkinter import Tk, filedialog
 from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.properties import NumericProperty
+
+from textblob import TextBlob
 
 from openai import OpenAI
 
@@ -92,8 +94,16 @@ import requests
 import threading
 import copy
 
+import pytesseract
+from PIL import Image
+import cv2
+
+import cohere
+
 #Retrieve Code Documentation
 API_KEY = "BXyTrgsV2PMbRuvDYu9ZwfLHObeTkR4SvPoZAvtf"
+
+cohere_api_key = "5VkxjOzk1Jo4nkonX5XPM7ks9rHIm0h9lPacWQMx"
 """
 # Create the embedding model
 embed_model = CohereEmbedding(
@@ -133,6 +143,10 @@ global_touch = None
 global_drag = False
 added_node = False
 
+language_codes = None
+with open('language_codes.json') as json_file:
+    language_codes = json.load(json_file)
+        
 nodes_regenerated = 0
 
 def is_point_in_ellipse(point, center, size):
@@ -1132,16 +1146,14 @@ image_components = []
 node_init = {
     "file_chooser" : {
         "function_name": "file_chooser",
-        "import_string" : """
-from tkinter import Tk, filedialog
-""",
+        "import_string" : None,
         "function_string" : """
 async def file_chooser(node):
     print(node, node.node_id, node.output_args)
     if node.trigger_in.startswith("display_output"):
         node.output_args = {"user_image" : None}
         return {"user_image" : None}
-    elif node.trigger_in == "Button : camera_icon":
+    else:
         root = Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
@@ -1313,7 +1325,177 @@ async def prompt(node, model=None, user_prompt=None, context=None):
             "generated_image_path" : "string",
         }
     },
+    "image_to_text" : {
+        "function_name": "image_to_text",
+        "import_string" : None,
+        "function_string" : """
+async def image_to_text(node, image_path=None):
+    # Load the image using PIL
     
+    image = Image.open(image_path)
+
+    # Convert the image to a format OpenCV can work with
+    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
+    # Use pytesseract to get detailed OCR results
+    detailed_data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+    # Initialize variables to store sentence/paragraph bounding boxes and text
+    boxes = []
+    current_box = None
+    current_text = ""
+
+    # Loop over each of the text elements found in the image
+    for i in range(len(detailed_data['level'])):
+        (x, y, w, h) = (detailed_data['left'][i], detailed_data['top'][i], detailed_data['width'][i], detailed_data['height'][i])
+        text = detailed_data['text'][i]
+        conf = int(detailed_data['conf'][i])
+        
+        # Only consider text elements with a confidence above a certain threshold
+        if conf > 40:
+            if current_box is None:
+                # Start a new bounding box and text group
+                current_box = (x, y, x + w, y + h)
+                current_text = text
+            else:
+                # Check if the text element is on a new line
+                if y > current_box[3]:
+                    # Add a newline character
+                    current_text += "\\n"
+                # Expand the current bounding box to include the new text element
+                current_box = (
+                    min(current_box[0], x),
+                    min(current_box[1], y),
+                    max(current_box[2], x + w),
+                    max(current_box[3], y + h)
+                )
+                # Append text to the current group
+                current_text += " " + text
+            
+            # Check if the next element is a new paragraph or sentence (using heuristic)
+            if i == len(detailed_data['level']) - 1 or detailed_data['block_num'][i] != detailed_data['block_num'][i + 1]:
+                boxes.append((current_box, current_text))
+                current_box = None
+                current_text = ""
+    output_text = ""
+    # Draw bounding boxes around sentences/paragraphs and print the text and bounding box coordinates
+    for ((x1, y1, x2, y2), text) in boxes:
+        #cv2.rectangle(image_cv, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        output_text += f"Text:\\n{text}\\nBounding Box: ({x1}, {y1}), ({x2}, {y2})\\n\\n"
+    print(output_text)
+    return {"output_text" : output_text}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "image_path" : "string",
+        },
+        "outputs": {
+            "output_text" : "string",
+        }
+    },
+    "translate_language" : {
+        "function_name": "translate_language",
+        "import_string" : None,
+        "function_string" : """
+async def translate_language(node, input_text=None, input_language=None, output_language="English"):
+    if input_language != output_language:
+        global cohere_api_key
+        co = cohere.Client(cohere_api_key) # This is your trial API key
+        fix_prompt = f'Translate each sentence into {output_language}, output only the translation:'
+        response = co.generate(
+            model='c4ai-aya-23',
+            prompt=fix_prompt + input_text,
+            max_tokens=20000,
+            temperature=0.9,
+            k=0,
+            stop_sequences=[],
+            return_likelihoods='NONE')
+        print("Translated", response.generations[0].text)
+        output_text = response.generations[0].text
+        return {"output_text" : output_text}
+    else:
+        return {"output_text" : input_text}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "input_text" : "string",
+            "input_language" : "string",
+            "output_language" : "string"
+         },
+        "outputs": {
+            "output_text" : "string",
+        }
+    },
+    "detect_language" : {
+        "function_name": "detect_language",
+        "import_string" : None,
+        "function_string" : """
+async def detect_language(node, input_text=None):
+    if input_text:
+        try:
+            co = cohere.Client(cohere_api_key) # This is your trial API key
+            # Detect the language of the text
+            # Print the language code and name
+            response = co.generate(
+            model='c4ai-aya-23',
+            prompt="Input Text:\\n" + input_text + "\\nDetect language, output only language code none else",
+            max_tokens=5,
+            temperature=0.9,
+            k=0,
+            stop_sequences=[],
+            return_likelihoods='NONE')
+            language_code=response.generations[0].text
+            print(response.generations[0].text)
+            language = language_codes[language_code]
+            print(language_code)
+            print("language", language)
+            return {"language" : language}
+        except Exception as e:
+            print(f"Error: {e}")
+            return {"language" : "unknown"}
+    else:
+        return {"language" : "unknown"}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "input_text" : "string",
+        },
+        "outputs": {
+            "language" : "string",
+        }
+    },
+    "decide_output_language" : {
+        "function_name": "decide_output_language",
+        "import_string" : None,
+        "function_string" : """
+async def decide_output_language(node, user_language=None, listener_language=None, user_prompt=None, user_info=None, listener_info=None):
+    if input_text:
+        try:
+            language_code = detect(user_prompt)
+            language = language_codes[language_code]
+            return {"language" : language}
+        except Exception as e:
+            print(f"Error: {e}")
+            return {"language" : "English"}
+    else:
+        return {"language" : "English"}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "user_prompt": "string",
+            "user_language": "string",
+            "user_info": "string",
+            "listener_language": "string",
+            "listener_info": "string"
+        },
+        "outputs": {
+            "language" : "string",
+        }
+    },
 }
 
 #def newNode(node):
