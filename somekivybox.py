@@ -93,12 +93,17 @@ import re
 import requests
 import threading
 import copy
+import ast
 
 import pytesseract
 from PIL import Image
 import cv2
 
 import cohere
+
+from pygments.lexers import PythonLexer
+from pygments import highlight
+from pygments.formatters import HtmlFormatter
 
 #Retrieve Code Documentation
 API_KEY = "BXyTrgsV2PMbRuvDYu9ZwfLHObeTkR4SvPoZAvtf"
@@ -135,6 +140,7 @@ use_logo = "bot"
 
 
 lines = {}
+lines_canvas = {}
 connections = {}
 nodes = {}
 node_info = {}
@@ -220,6 +226,14 @@ def generate_documentation(code_path):
 class NewNodeScreen(Screen):
     def __init__(self, **kwargs):
         super(NewNodeScreen, self).__init__(**kwargs)
+        self.current_documentation = None
+        self.current_description = None
+        self.current_code = None
+        self.current_inputs = None
+        self.current_outputs = None
+        self.current_name = None
+        
+        self.selected = None
         
         main_scroll = ScrollView()
         main_layout = BoxLayout(orientation='vertical')
@@ -227,7 +241,7 @@ class NewNodeScreen(Screen):
         back_box = BoxLayout(size_hint=(1, None), height=40)
         back_button = Button(text="Back", on_press=self.switch_to_screen)
         switch_button = Button(text="Code Interpreter")
-        save_button = Button(text="Save Node")
+        save_button = Button(text="Save Node", on_press=self.save_the_node)
         #back_button.bind(on_press=self.back_button_on_press)
         back_box.add_widget(back_button)
         back_box.add_widget(switch_button)
@@ -236,10 +250,10 @@ class NewNodeScreen(Screen):
         
         name_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
         name_label = Label(text="Name", size_hint_x = .25)
-        name_input = TextInput(size_hint_x = .75)
+        self.name_input = TextInput(size_hint_x = .75)
         #back_button.bind(on_press=self.back_button_on_press)
         name_box.add_widget(name_label)
-        name_box.add_widget(name_input)
+        name_box.add_widget(self.name_input)
         main_layout.add_widget(name_box)
         # Parameters label
         params_label_box = BoxLayout(size_hint=(1, None), height=40)
@@ -286,8 +300,7 @@ class NewNodeScreen(Screen):
         self.code_button = Button(text="Code", on_release=self.switch_to_code)
         button_select_box.add_widget(self.code_button)
         
-        
-        
+
         # Description Text Box
         self.description_scroll = ScrollView(size_hint=(1, 0.5))
         self.description_textinput = TextInput(size_hint=(1, None), multiline=True)
@@ -306,13 +319,13 @@ class NewNodeScreen(Screen):
         button_generate_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
         main_layout.add_widget(button_generate_box)
         
-        self.description_gen_button = Button(text="Generate from Description")
+        self.description_gen_button = Button(text="Generate from Description", on_release=self.generate_from_description)
         button_generate_box.add_widget(self.description_gen_button)
         
-        self.documentation_gen_button = Button(text="Generate from Documentation")
+        self.documentation_gen_button = Button(text="Generate from Documentation", on_release=self.generate_from_documentation)
         button_generate_box.add_widget(self.documentation_gen_button)
         
-        self.code_gen_button = Button(text="Generate from Code")
+        self.code_gen_button = Button(text="Generate from Code", on_release=self.generate_from_code)
         button_generate_box.add_widget(self.code_gen_button)
         
         # Scrollable input
@@ -331,24 +344,195 @@ class NewNodeScreen(Screen):
         self.add_widget(main_layout)
         
         self.switch_to_description(instance = None)
+    
+    def save_the_node(self, instance):
+        #Update node_init
+        print("Saving...")
+        data = {
+            "function_name": self.current_name,
+            "import_string" : None,
+            "function_string" : self.current_code or self.description_textinput.text,
+            "description" : self.current_description or self.description_textinput.text,
+            "documentation" : self.current_documentation or self.description_textinput.text,
+            "inputs" : ast.literal_eval(f"{{{self.input_textinput.text}}}"),
+            "outputs": ast.literal_eval(f"{{{self.output_textinput.text}}}")
+        }
+        
+        global node_init
+        node_init[self.current_name] = data
+        print(node_init)
+        #Save node_init
+        print("Node Init: ")
+        f = open("node_init.json", "w")
+        f.write(json.dumps(node_init))
+        f.close()
+    
+    def generate_from_description(self, instance):
+        if self.selected == "documentation":
+            self.generate_documentation(instance = None, context=self.current_description, gen_from="description")
+        elif self.selected == "code":
+            self.generate_code(instance = None, context=self.current_description, gen_from="description")
+        else:
+            self.current_description = self.description_textinput.text
+            
+    def generate_from_documentation(self, instance):
+        if self.selected == "description":
+            self.generate_description(instance = None, context=self.current_documentation, gen_from="documentation")
+        elif self.selected == "code":
+            self.generate_code(instance = None, context=self.current_documentation, gen_from="documentation")
+        else:
+            self.current_documentation = self.description_textinput.text
+        
+    def generate_from_code(self, instance):
+        if self.selected == "description":
+            self.generate_description(instance = None, context=self.current_code, gen_from="code")
+        elif self.selected == "documentation":
+            self.generate_documentation(instance = None, context=self.current_code, gen_from="code")
+        else:
+            self.current_code = self.description_textinput.text
+            
+    def generate_code(self, instance, context, gen_from):
+        message = []
+        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+        
+        inputs = self.input_textinput.text or ""
+        outputs = self.output_textinput.text or ""
+        self.current_name = self.name_input.text or ""
+        
+        doc_format = f"""
+async def {self.current_name}(node, {{input1}}, {{input2}}): #Remember to change based on Inputs.
+        #Insert Function
+        return {{{{\"output1\"}} : "", {{\"output2\"}} : []}} #Remember to change based on Outputs.
+        """
+        
+        gen_message = f"Generate python code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\nMake sure to replace inputs and outputs with the given names. Output nothing else but the code with indentations. Enclose with ```"
+        message.append({"role": "user", "content": gen_message})
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        
+        response = chat_completion.choices[0].message.content
+        response = response.replace("\\_", "_")
+        response = response.replace(" ```python", "")
+        response = response.replace("```python", "")
+        response = response.replace("```", "")
+        # Print the assistant's response
+        print("Bot: ", response)
+        
+        self.current_code = response
+        self.description_textinput.text = response
+            
+    def generate_description(self, instance, context, gen_from):
+        message = []
+        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+        
+        inputs = self.input_textinput.text or ""
+        outputs = self.output_textinput.text or ""
+        self.current_name = self.name_input.text or ""
+        
+        doc_format = f"""
+Example:
+
+Function Name: add
+This function adds 2 numbers and returns a sum.
+It is used when asked:
+- What is the sum of numbers 1 and 2?
+- The sum of 1 and 2 is?
+        """
+        
+        gen_message = f"Generate short description code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\n. Output nothing else but the description."
+        message.append({"role": "user", "content": gen_message})
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        
+        response = chat_completion.choices[0].message.content
+        response = response.replace("\\_", "_")
+
+        # Print the assistant's response
+        print("Bot: ", response)
+        
+        self.current_description = response
+        self.description_textinput.text = response
+        
+    def generate_documentation(self, instance, context, gen_from):
+        message = []
+        code_message = ""
+        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+        
+        inputs = self.input_textinput.text or ""
+        outputs = self.output_textinput.text or ""
+        
+        doc_format = """
+        Node Name: {code_name}
+        
+        Functions:
+
+        Function Name: {function_name_1}
+        Description: {function_description_1}
+        Input Arguments:
+        {input_args_1}
+        Output Arguments:
+        {output_args_1}
+        Example Usage:
+        {function_name_1}({input_args_1})
+        """
+        
+        gen_message = f"Generate documentation of code given parameters. Base on what the code does\n\nInputs:{inputs}\n\nOutputs:{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}"
+        message.append({"role": "user", "content": gen_message})
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        
+        response = chat_completion.choices[0].message.content
+        response = response.replace("\\_", "_")
+
+        # Print the assistant's response
+        print("Bot: ", response)
+        
+        self.current_documentation = response
+        self.description_textinput.text = response
+    
     def switch_to_screen(self, instance):
         # Switch to 'chatbox'
         self.manager.transition = NoTransition()
         self.manager.current = 'draggable_label_screen'
-        
+    def save_node(self, instance):
+        #Update Node Init
+        #Save Node Init
+        pass
     def switch_to_description(self, instance):
-        self._switch_input(TextInput, "This is the description.")
+        if self.selected == "documentation":
+            self.current_documentation = self.description_textinput.text or ""
+        elif self.selected == "code":
+            self.current_code = self.description_textinput.text or ""
+        self.selected = "description"
+        self._switch_input(TextInput, self.current_description or "", hint_text= "This is the description.")
         self.update_button_colors(self.description_button)
 
     def switch_to_documentation(self, instance):
-        self._switch_input(TextInput, "This is the documentation.")
+        if self.selected == "description":
+            self.current_description = self.description_textinput.text or ""
+        elif self.selected == "code":
+            self.current_code = self.description_textinput.text or ""
+        self.selected = "documentation"
+        self._switch_input(TextInput, self.current_documentation or "", hint_text= "This is the documentation.")
         self.update_button_colors(self.documentation_button)
 
     def switch_to_code(self, instance):
-        self._switch_input(CodeInput, "print('This is the code')", lexer=PythonLexer())
+        if self.selected == "description":
+            self.current_description = self.description_textinput.text or ""
+        elif self.selected == "documentation":
+            self.current_documentation = self.description_textinput.text or ""
+        self.selected = "code"
+        self._switch_input(CodeInput, self.current_code or "", hint_text= "print('This is the code')", lexer=PythonLexer())
         self.update_button_colors(self.code_button)
-
+    
     def _switch_input(self, input_type, text, **kwargs):
+        
         # Remove the current text input
         self.description_scroll.remove_widget(self.description_textinput)
         # Create a new text input of the given type
@@ -463,11 +647,27 @@ class AsyncNode:
         self.input_addresses = input_addresses
         self.output_args = output_args
         self.node_id = node_id
+        self.stop = False
     def change_to_red(self):
         nodes[self.node_id].label_color.rgba = (1,0,0,1)
     def change_to_gray(self):
         nodes[self.node_id].label_color.rgba = (0.5, 0.5, 0.5, 1)
+    async def trigger_node(self, node):
+        node.trigger_in = self.node_id
+        print(node, node.trigger_in)
+        await node.trigger()
     async def trigger(self):
+        if self.trigger_in:
+            if self.trigger_in.startswith("stop_after"):
+                self.stop = True
+            elif self.trigger_in.startswith("reset_outputs"):
+                print(f"Resetting output {self.node_id}")
+                try:
+                    for arg_name in self.output_args:
+                        self.output_args[arg_name] = None
+                except:
+                    pass
+                return None
         # Get the function from the dictionary based on the function_name
         function_to_call = functions.get(self.function_name)
         print(self, self.node_id)
@@ -513,12 +713,11 @@ class AsyncNode:
             #print(f"Triggering output node {node.function_name}")
             await node.trigger()
         """
-        async def trigger_node(node):
-            node.trigger_in = self.node_id
-            print(node, node.trigger_in)
-            await node.trigger()
-        tasks = [asyncio.create_task(trigger_node(node)) for node in self.trigger_out]
-        await asyncio.gather(*tasks)
+        if not self.stop:
+            tasks = [asyncio.create_task(self.trigger_node(node)) for node in self.trigger_out]
+            await asyncio.gather(*tasks)
+        else:
+            self.stop = False
 
 class MousePositionWidget(Widget):
     def __init__(self, **kwargs):
@@ -557,6 +756,7 @@ class TouchableRectangle(Widget):
         self.line2 = None
         self.line = None
         self.curr_i = None
+        self.collide_mode = None
     def update_rect(self, *args):
         # Update the position of the existing Rectangle
         self.rect.pos = self.pos
@@ -577,11 +777,77 @@ class TouchableRectangle(Widget):
                         parent.output_label_circles[i].pos[1] <= touch.pos[1] <= parent.output_label_circles[i].pos[1] + 10):
                         # Change the circle color when held
                         #print(True)
+                        self.collide_mode = 0
                         self.curr_i = i
                         #print(self.curr_i)
                         with self.canvas:
                             Color(1, 0, 0)
                             self.line = Line(points=[parent.output_label_circles[self.curr_i].pos[0] + 5, parent.output_label_circles[self.curr_i].pos[1] + 5, *touch.pos])
+                        return super(TouchableRectangle, self).on_touch_down(touch)
+                for i in parent.input_label_circles:
+                    #print(i, parent.output_label_circles[i].pos, touch.pos)
+                    if (parent.input_label_circles[i].pos[0] <= touch.pos[0] <= parent.input_label_circles[i].pos[0] + 20 and
+                        parent.input_label_circles[i].pos[1] <= touch.pos[1] <= parent.input_label_circles[i].pos[1] + 20):
+                        # Change the circle color when held
+                        #print(True)
+                        #self.curr_i = i
+                        self.collide_mode = 1
+                        print(parent.node_id, i)
+                        print("Connections: ", connections[parent.node_id])
+                        print("Collision: ", i)
+                        if connections[parent.node_id]["inputs"]:
+                            curr_in = connections[parent.node_id]["inputs"]
+                            for j in curr_in:
+                                curr_j = curr_in[j]
+                                print(j, curr_j)
+                                for k in curr_j:
+                                    curr_k = curr_j[k]
+                                    if k == i:
+                                        for l in connections[parent.node_id]["inputs"][j][k]:
+                                            
+                                            #Remove Line
+                                            print(lines[connections[parent.node_id]["inputs"][j][k][l]])
+                                            print(connections[parent.node_id]["inputs"][j][k][l])
+                                            #print(connections[parent.node_id]["inputs"][j][k])
+                                            #Remove that connection bidirectionally
+                                            print("Node info ", parent.node_id, node_info[parent.node_id]["input_addresses"])
+                                            #filtered_data = [item for item in node_info[parent.node_id]["input_addresses"] if item['target'] != i]
+                                            node_info[parent.node_id]["input_addresses"] = [item for item in node_info[parent.node_id]["input_addresses"] if item['target'] != i]
+                                            #print("Filtered ", node_info[parent.node_id]["input_addresses"])
+                                            #print("Async ", parent.node_id, async_nodes[parent.node_id].input_addresses)
+                                            async_nodes[parent.node_id].input_addresses = [item for item in async_nodes[parent.node_id].input_addresses if item['target'] != i]
+                                            #print("Filtered ", async_nodes[parent.node_id].input_addresses )
+                                            # Remove the dictionary where target == 'user_prompt'
+                                            
+                                            #Remove in async where target == i
+                                            #print("Node info ", j, node_info[j])
+                                            #print("Async ", j, async_nodes[j])
+                                            #Remove in the input_addresses
+                                            #async_nodes[curr_child].input_addresses.append({"node": async_nodes[curr_parent], "arg_name": self.curr_i, "target": curr_j})
+                                            #node_info[curr_child]["input_addresses"].append({"node": curr_parent, "arg_name": self.curr_i, "target": curr_j})
+                                            
+                                            #Remove the Line
+                                            #print("Lines: ")
+                                            lines_canvas[connections[parent.node_id]["inputs"][j][k][l]].remove(lines[connections[parent.node_id]["inputs"][j][k][l]])
+                                            del lines[connections[parent.node_id]["inputs"][j][k][l]]
+                                            del connections[parent.node_id]["inputs"][j][k]
+                                            
+                                            
+                                            """
+                                            print(parent.canvas)
+                                            for i in self.canvas.children:
+                                                print(i)
+                                            """
+                                            #print(parent, self, parent.parent)
+                                            #lines2 = [item for item in parent.parent.canvas.children if isinstance(item, Line)]
+                                            #print(lines2)
+                                            #self.canvas.remove(lines[connections[parent.node_id]["inputs"][j][k][l]])
+                                            #self.canvas.remove(lines[connections[parent.node_id]["inputs"][j][k][l]])
+                                        break
+                        #print(self.curr_i)
+                        #print(self.curr_i)
+                        with self.canvas:
+                            Color(1, 0, 0)
                         return super(TouchableRectangle, self).on_touch_down(touch)
         return super(TouchableRectangle, self).on_touch_down(touch)
 
@@ -608,61 +874,64 @@ class TouchableRectangle(Widget):
                     if child.box_rect.collide_point(*touch.pos):
                         print("Touch collides with", child.node_id)
                         #Check for collision in the outputs of that box only
-                        for j in child.input_label_circles:
-                            print(j, child.input_label_circles[j].pos)
-                            if is_point_in_ellipse(touch.pos, child.input_label_circles[j].pos, (10, 10)):
-                                found_circle = True
-                                print("Found point")
-                                with self.canvas:
-                                    Color(1, 0, 0)
-                                    #print(self.curr_i)
-                                    if(self.curr_i):
-                                        #Instantiate line on lines by appending
-                                        seconds = time.time()
-                                        lines[str(seconds)] = (Line(points=[parent.output_label_circles[self.curr_i].pos[0] + 5, parent.output_label_circles[self.curr_i].pos[1] + 5,
-                                                                  child.input_label_circles[j].pos[0] + 5, child.input_label_circles[j].pos[1] + 5]))
-                                        #self.connection = (child.input_circle_pos[0] + 5, child.input_circle_pos[1] + 5)
-                                        #If collided save the id of the connection bidirectionally, the id of this and the other.
-                                        # Initialize connections if it is not already initialized
-                                        if parent.node_id not in connections:
-                                            connections[parent.node_id] = {
-                                                "inputs" : {},
-                                                "outputs" : {}
-                                            }
-                                        if child.node_id not in connections:
-                                            connections[child.node_id] = {
-                                                "inputs" : {},
-                                                "outputs" : {}
-                                            }
-                                        
-                                        # First get the id of node, store in connections, with value of the line
-                                        if child.node_id not in connections[parent.node_id]["outputs"]:
-                                            connections[parent.node_id]["outputs"][child.node_id] = {}
-                                        if self.curr_i not in connections[parent.node_id]["outputs"][child.node_id]:
-                                            connections[parent.node_id]["outputs"][child.node_id][self.curr_i] = {}
-                                        connections[parent.node_id]["outputs"][child.node_id][self.curr_i][j] = str(seconds)
-                                        # Then get the id of the child, store in connections
-                                        
-                                        # First get the id of node, store in connections, with value of the line
-                                        if parent.node_id not in connections[child.node_id]["inputs"]:
-                                            connections[child.node_id]["inputs"][parent.node_id] = {}
-                                        if j not in connections[child.node_id]["inputs"][parent.node_id]:
-                                            connections[child.node_id]["inputs"][parent.node_id][j] = {}
-                                        connections[child.node_id]["inputs"][parent.node_id][j][self.curr_i] = str(seconds)
-                                        
-                                        #Add connection from node_id to the child_node_id
-                                        print(parent.node_id)
-                                        curr_parent = str(parent.node_id)
-                                        curr_child = str(child.node_id)
-                                        curr_j = str(j)
-                                        
-                                        
-                                        #print(async_nodes[parent.node_id].input_addresses)
-                                        #print(lines)
-                                        #print(parent.node_id, connections[parent.node_id])
-                                        #print(child.node_id, connections[child.node_id])
-                                        #print(connections)
-                                    break
+                        if self.collide_mode == 0:
+                            for j in child.input_label_circles:
+                                print(j, child.input_label_circles[j].pos)
+                                if is_point_in_ellipse(touch.pos, child.input_label_circles[j].pos, (10, 10)):
+                                    found_circle = True
+                                    print("Found point")
+                                    with self.canvas:
+                                        Color(1, 0, 0)
+                                        #print(self.curr_i)
+                                        if(self.curr_i):
+                                            #Instantiate line on lines by appending
+                                            seconds = time.time()
+                                            lines[str(seconds)] = (Line(points=[parent.output_label_circles[self.curr_i].pos[0] + 5, parent.output_label_circles[self.curr_i].pos[1] + 5,
+                                                                      child.input_label_circles[j].pos[0] + 5, child.input_label_circles[j].pos[1] + 5]))
+                                            #self.connection = (child.input_circle_pos[0] + 5, child.input_circle_pos[1] + 5)
+                                            #If collided save the id of the connection bidirectionally, the id of this and the other.
+                                            # Initialize connections if it is not already initialized
+                                            if parent.node_id not in connections:
+                                                connections[parent.node_id] = {
+                                                    "inputs" : {},
+                                                    "outputs" : {}
+                                                }
+                                            if child.node_id not in connections:
+                                                connections[child.node_id] = {
+                                                    "inputs" : {},
+                                                    "outputs" : {}
+                                                }
+                                            
+                                            # First get the id of node, store in connections, with value of the line
+                                            if child.node_id not in connections[parent.node_id]["outputs"]:
+                                                connections[parent.node_id]["outputs"][child.node_id] = {}
+                                            if self.curr_i not in connections[parent.node_id]["outputs"][child.node_id]:
+                                                connections[parent.node_id]["outputs"][child.node_id][self.curr_i] = {}
+                                            connections[parent.node_id]["outputs"][child.node_id][self.curr_i][j] = str(seconds)
+                                            # Then get the id of the child, store in connections
+                                            
+                                            # First get the id of node, store in connections, with value of the line
+                                            if parent.node_id not in connections[child.node_id]["inputs"]:
+                                                connections[child.node_id]["inputs"][parent.node_id] = {}
+                                            if j not in connections[child.node_id]["inputs"][parent.node_id]:
+                                                connections[child.node_id]["inputs"][parent.node_id][j] = {}
+                                            connections[child.node_id]["inputs"][parent.node_id][j][self.curr_i] = str(seconds)
+                                            
+                                            #Add connection from node_id to the child_node_id
+                                            print(parent.node_id)
+                                            curr_parent = str(parent.node_id)
+                                            curr_child = str(child.node_id)
+                                            curr_j = str(j)
+                                            
+                                            
+                                            #print(async_nodes[parent.node_id].input_addresses)
+                                            #print(lines)
+                                            #print(parent.node_id, connections[parent.node_id])
+                                            #print(child.node_id, connections[child.node_id])
+                                            #print(connections)
+                                        break
+                                    
+                                    
             if found_circle:
                 async_nodes[curr_child].input_addresses.append({"node": async_nodes[curr_parent], "arg_name": self.curr_i, "target": curr_j})
                 node_info[curr_child]["input_addresses"].append({"node": curr_parent, "arg_name": self.curr_i, "target": curr_j})
@@ -754,6 +1023,8 @@ class DraggableLabel(DragBehavior, Label):
         self.offsetted_pos = pos
         self.pos = (pos[0], pos[1])
         self.mouse_offset = [0,0]
+        
+        self.to_be_deleted = False
 
         
         with self.canvas.before:
@@ -861,13 +1132,19 @@ class DraggableLabel(DragBehavior, Label):
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
+            if self.to_be_deleted:
+                #Delete all lines from detected connections from connections
+                #Delete thing in canvas
+                #Delete trigger_outs by finding in node_info that has that trigger_out
+                #Delete node_info
+                #Delete connections
+                #Delete asyncnode
+                pass
             self.dragging = True  # Set dragging to True when touch is on the label
             global_drag = True
             # Check if the touch is within the bounds of the circles
-            if (self.input_circle_pos[0] <= touch.pos[0] <= self.input_circle_pos[0] + 10 and
-                    self.input_circle_pos[1] <= touch.pos[1] <= self.input_circle_pos[1] + 10) or \
-               (self.output_circle_pos[0] <= touch.pos[0] <= self.output_circle_pos[0] + 10 and
-                    self.output_circle_pos[1] <= touch.pos[1] <= self.output_circle_pos[1] + 10):
+            if (self.output_circle_pos[0] <= touch.pos[0] <= self.output_circle_pos[0] + 20 and
+                    self.output_circle_pos[1] <= touch.pos[1] <= self.output_circle_pos[1] + 20):
                 # Change the circle color when held
                 self.input_circle_color.rgba = (1, 0, 0, 1)  # Red color
                 self.output_circle_color.rgba = (1, 0, 0, 1)  # Red color
@@ -876,7 +1153,75 @@ class DraggableLabel(DragBehavior, Label):
                     Color(1, 0, 0)
                     self.line = Line(points=[self.output_circle_pos[0] + 5, self.output_circle_pos[1] + 5, *touch.pos])
                 return super(DraggableLabel, self).on_touch_down(touch)
-
+                
+            if (self.input_circle_pos[0] <= touch.pos[0] <= self.input_circle_pos[0] + 20 and
+                    self.input_circle_pos[1] <= touch.pos[1] <= self.input_circle_pos[1] + 20):
+                # Change the circle color when held
+                #print(True)
+                #self.curr_i = i
+                self.collide_mode = 1
+                i = "input_circle"
+                print(self.node_id, i)
+                print("Connections: ", connections[self.node_id])
+                print("Collision: ", i)
+                if connections[self.node_id]["inputs"]:
+                    curr_in = connections[self.node_id]["inputs"]
+                    for j in curr_in:
+                        curr_j = curr_in[j]
+                        print(j, curr_j)
+                        for k in curr_j:
+                            curr_k = curr_j[k]
+                            if k == i:
+                                for l in connections[self.node_id]["inputs"][j][k]:
+                                    
+                                    #Remove Line
+                                    #print(lines[connections[self.node_id]["inputs"][j][k][l]])
+                                    #print(connections[self.node_id]["inputs"][j][k][l])
+                                    #print(connections[self.node_id]["inputs"][j][k])
+                                    #Remove that connection bidirectionally
+                                    #print("Node info ", self.node_id, node_info[self.node_id]["input_addresses"])
+                                    #filtered_data = [item for item in node_info[self.node_id]["input_addresses"] if item['target'] != i]
+                                    #node_info[self.node_id]["trigger_out"] = [item for item in node_info[self.node_id]["input_addresses"] if item['target'] != i]
+                                    #print("Filtered ", node_info[self.node_id]["input_addresses"])
+                                    #print("Async ", self.node_id, async_nodes[self.node_id].input_addresses)
+                                    #Iterate through every node and find which node that has trigger_out as self.node_id
+                                    for q in async_nodes:
+                                        #print(q, async_nodes[q].trigger_out)
+                                        if async_nodes[self.node_id] in async_nodes[q].trigger_out:
+                                            print("Found in: ", q)
+                                            async_nodes[q].trigger_out.remove(async_nodes[self.node_id])
+                                            node_info[q]["trigger_out"].remove(self.node_id)
+                                            print(async_nodes[q].trigger_out)
+                                    #print("Async ", async_nodes[self.node_id].trigger_out)
+                                    #async_nodes[self.node_id].trigger_out = [item for item in async_nodes[self.node_id].trigger_out if item != i]
+                                    #print("Filtered ", async_nodes[self.node_id].input_addresses )
+                                    # Remove the dictionary where target == 'user_prompt'
+                                    
+                                    #Remove in async where target == i
+                                    #print("Node info ", j, node_info[j])
+                                    #print("Async ", j, async_nodes[j])
+                                    #Remove in the input_addresses
+                                    #async_nodes[curr_child].input_addresses.append({"node": async_nodes[curr_parent], "arg_name": self.curr_i, "target": curr_j})
+                                    #node_info[curr_child]["input_addresses"].append({"node": curr_parent, "arg_name": self.curr_i, "target": curr_j})
+                                    
+                                    #Remove the Line
+                                    #print("Lines: ")
+                                    lines_canvas[connections[self.node_id]["inputs"][j][k][l]].remove(lines[connections[self.node_id]["inputs"][j][k][l]])
+                                    del lines[connections[self.node_id]["inputs"][j][k][l]]
+                                    del connections[self.node_id]["inputs"][j][k]
+                                    
+                                    
+                                    """
+                                    print(parent.canvas)
+                                    for i in self.canvas.children:
+                                        print(i)
+                                    """
+                                    #print(parent, self, parent.parent)
+                                    #lines2 = [item for item in parent.parent.canvas.children if isinstance(item, Line)]
+                                    #print(lines2)
+                                    #self.canvas.remove(lines[connections[self.node_id]["inputs"][j][k][l]])
+                                    #self.canvas.remove(lines[connections[self.node_id]["inputs"][j][k][l]])
+                                break
         # Allow dragging of the box
         self.drag_rectangle = (self.x, self.y, self.width, self.height)
         return super(DraggableLabel, self).on_touch_down(touch)
@@ -1016,10 +1361,12 @@ class DraggableLabel(DragBehavior, Label):
                     for k in connections[self.node_id]["outputs"][i][j]:
                         curr_line = connections[self.node_id]["outputs"][i][j][k]
                         if j != "output_circle":
-                            lines[curr_line].points = [self.output_label_circles[j].pos[0] + 5, self.output_label_circles[j].pos[1] + 5, lines[curr_line].points[2], lines[curr_line].points[3]]
+                            if curr_line in lines:
+                                lines[curr_line].points = [self.output_label_circles[j].pos[0] + 5, self.output_label_circles[j].pos[1] + 5, lines[curr_line].points[2], lines[curr_line].points[3]]
                         else:
                             #pass
-                            lines[curr_line].points = [self.output_circle_pos[0] + 5, self.output_circle_pos[1] + 5, lines[curr_line].points[2], lines[curr_line].points[3]]
+                            if curr_line in lines:
+                                lines[curr_line].points = [self.output_circle_pos[0] + 5, self.output_circle_pos[1] + 5, lines[curr_line].points[2], lines[curr_line].points[3]]
             for i in connections[self.node_id]["inputs"]:
                 #print("i: ", i)
                 for j in connections[self.node_id]["inputs"][i]:
@@ -1028,10 +1375,12 @@ class DraggableLabel(DragBehavior, Label):
                         curr_line = connections[self.node_id]["inputs"][i][j][k]
                         #print(j)
                         if j != "input_circle":
-                            lines[curr_line].points = [lines[curr_line].points[0], lines[curr_line].points[1], self.input_label_circles[j].pos[0] + 5, self.input_label_circles[j].pos[1] + 5]
+                            if curr_line in lines:
+                                lines[curr_line].points = [lines[curr_line].points[0], lines[curr_line].points[1], self.input_label_circles[j].pos[0] + 5, self.input_label_circles[j].pos[1] + 5]
                         else:
                             #pass
-                            lines[curr_line].points = [lines[curr_line].points[0], lines[curr_line].points[1], self.input_circle_pos[0] + 5, self.input_circle_pos[1] + 5]
+                            if curr_line in lines:
+                                lines[curr_line].points = [lines[curr_line].points[0], lines[curr_line].points[1], self.input_circle_pos[0] + 5, self.input_circle_pos[1] + 5]
         """
         if self.prev_pos:
             # Calculate the delta between the current and previous positions
@@ -1144,30 +1493,43 @@ class DraggableLabel(DragBehavior, Label):
         return super(DraggableLabel, self).on_touch_up(touch)
 image_components = []
 node_init = {
+    
+    "reset_outputs" : {
+        "function_name": "reset_outputs",
+        "import_string" : None,
+        "function_string" : """
+async def reset_outputs(node):
+    print(node, node.node_id, node.output_args)
+    return None
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        },
+        "outputs": {
+        }
+    },
     "file_chooser" : {
         "function_name": "file_chooser",
         "import_string" : None,
         "function_string" : """
 async def file_chooser(node):
     print(node, node.node_id, node.output_args)
-    if node.trigger_in.startswith("display_output"):
-        node.output_args = {"user_image" : None}
-        return {"user_image" : None}
+    root = Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+    root.destroy()
+    def pop(dt):
+        popup = Popup(title='No file selected',
+                      content=Label(text='No file selected.'),
+                      size_hint=(None, None), size=(400, 200))
+        popup.open()
+    if file_path:
+        #self.image.source = file_path
+        return {"user_image" : file_path}
     else:
-        root = Tk()
-        root.withdraw()
-        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
-        root.destroy()
-        def pop(dt):
-            popup = Popup(title='No file selected',
-                          content=Label(text='No file selected.'),
-                          size_hint=(None, None), size=(400, 200))
-            popup.open()
-        if file_path:
-            #self.image.source = file_path
-            return {"user_image" : file_path}
-        else:
-            Clock.schedule_once(pop)
+        node.stop = True
+        Clock.schedule_once(pop)
         """,
         "description" : None,
         "documentation" : None,
@@ -1193,6 +1555,7 @@ async def ignition(node):
             "outputs": {
             }
         },
+    
     "display_output" : {
         "function_name": "display_output",
         "import_string" : None,
@@ -1304,11 +1667,14 @@ async def prompt(node, model=None, user_prompt=None, context=None):
     await asyncio.sleep(.25)
     user_text = user_prompt
     instruct_type = app.get_instruct_type(user_text)
+    if context:
+        context = "Image to text output:\\n" + context
+        print("context", context)
     generated_image_path = ""
     if instruct_type == 1:
         generated_image_path = app.generate_image_prompt(user_text)
     # Continue the conversation            
-    response = app.continue_conversation()
+    response = app.continue_conversation(context=context)
     print("output: ", response)
     return {"output" : response, "instruct_type" : instruct_type, "generated_image_path" : generated_image_path}
         """,
@@ -1331,7 +1697,7 @@ async def prompt(node, model=None, user_prompt=None, context=None):
         "function_string" : """
 async def image_to_text(node, image_path=None):
     # Load the image using PIL
-    
+    print("Ran image_to_text")
     image = Image.open(image_path)
 
     # Convert the image to a format OpenCV can work with
@@ -1399,23 +1765,26 @@ async def image_to_text(node, image_path=None):
         "import_string" : None,
         "function_string" : """
 async def translate_language(node, input_text=None, input_language=None, output_language="English"):
-    if input_language != output_language:
-        global cohere_api_key
-        co = cohere.Client(cohere_api_key) # This is your trial API key
-        fix_prompt = f'Translate each sentence into {output_language}, output only the translation:'
-        response = co.generate(
-            model='c4ai-aya-23',
-            prompt=fix_prompt + input_text,
-            max_tokens=20000,
-            temperature=0.9,
-            k=0,
-            stop_sequences=[],
-            return_likelihoods='NONE')
-        print("Translated", response.generations[0].text)
-        output_text = response.generations[0].text
-        return {"output_text" : output_text}
+    if input_text:
+        if input_language != output_language:
+            global cohere_api_key
+            co = cohere.Client(cohere_api_key) # This is your trial API key
+            fix_prompt = f'Translate each sentence into {output_language}, output only the translation:'
+            response = co.generate(
+                model='c4ai-aya-23',
+                prompt=fix_prompt + input_text,
+                max_tokens=20000,
+                temperature=0.9,
+                k=0,
+                stop_sequences=[],
+                return_likelihoods='NONE')
+            print("Translated", response.generations[0].text)
+            output_text = response.generations[0].text
+            return {"output_text" : output_text}
+        else:
+            return {"output_text" : input_text}
     else:
-        return {"output_text" : input_text}
+        return {"output_text" : None}
         """,
         "description" : None,
         "documentation" : None,
@@ -1440,9 +1809,9 @@ async def detect_language(node, input_text=None):
             # Print the language code and name
             response = co.generate(
             model='c4ai-aya-23',
-            prompt="Input Text:\\n" + input_text + "\\nDetect language, output only language code none else",
-            max_tokens=5,
-            temperature=0.9,
+            prompt="Input Text:\\n" + input_text + "\\nDetect language, output only ISO 639 language code in format, based on language not content:\\ncode: en,fr,jp,etc.",
+            max_tokens=30,
+            temperature=0.1,
             k=0,
             stop_sequences=[],
             return_likelihoods='NONE')
@@ -1450,7 +1819,7 @@ async def detect_language(node, input_text=None):
             print(response.generations[0].text)
             language = language_codes[language_code]
             print(language_code)
-            print("language", language)
+            print("language: ", language)
             return {"language" : language}
         except Exception as e:
             print(f"Error: {e}")
@@ -1893,12 +2262,24 @@ class NewNodeComponent(BoxLayout):
     def __init__(self, text, **kwargs):
         super(NewNodeComponent, self).__init__(orientation='horizontal', **kwargs)
         self.text = text
+        
         self.label = Label(text=text, size_hint_x=0.7, halign='left', valign='middle')
         self.label.bind(size=self.label.setter('text_size'))  # Ensure the text size matches the label size
-        self.button = Button(text="Add", size_hint_x=0.3)
-        self.button.bind(on_press=self.button_on_press)
+        
+        self.button_box = BoxLayout(size_hint_x=0.3, orientation="horizontal")
+        
+        self.add_button = Button(text="Add")
+        self.add_button.bind(on_press=self.button_on_press)
+        
+        self.edit_button = Button(text="Edit")
+        
+        self.button_box.add_widget(self.add_button)
+        self.button_box.add_widget(self.edit_button)
+        
         self.add_widget(self.label)
-        self.add_widget(self.button)
+        self.add_widget(self.button_box)
+        
+        
     def button_on_press(self, instance):
         try:
             print(self.text)
@@ -1927,18 +2308,18 @@ class SelectNodeScreen(Screen):
         main_scroll = ScrollView(size_hint=(1, 1))
         
         # Create the main layout inside the scroll view
-        main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
-        main_layout.bind(minimum_height=main_layout.setter('height'))
+        self.main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
+        self.main_layout.bind(minimum_height=self.main_layout.setter('height'))
         
         # Add custom components to the main layout
         for i in node_init:  # Adding multiple custom components
             custom_component = NewNodeComponent(text=f"{i}")
             custom_component.size_hint_y = None
             custom_component.height = 50
-            main_layout.add_widget(custom_component)
+            self.main_layout.add_widget(custom_component)
         
         # Add the main layout to the scroll view
-        main_scroll.add_widget(main_layout)
+        main_scroll.add_widget(self.main_layout)
         
         # Add the back button and scroll view to the screen layout
         screen_layout.add_widget(back_box)
@@ -1946,6 +2327,7 @@ class SelectNodeScreen(Screen):
         
         # Add the screen layout to the screen
         self.add_widget(screen_layout)
+        
     def back_button_on_press(self, instance):
         app = MDApp.get_running_app()
         self.manager.transition = NoTransition()
@@ -2355,6 +2737,7 @@ print(\"Added\", {function_name})
             with self.canvas:
                 Color(1, 0, 0)
                 lines[i] = (Line(points=saved_lines[i]))
+                lines_canvas[i] = self.canvas
             #print(saved_lines[i])
         print("Line: ", lines)
         
@@ -2372,7 +2755,8 @@ print(\"Added\", {function_name})
         f = open("node_init.json", "r")
         node_init_temp = json.load(f)
         for i in node_init_temp:
-            node_init[i] = copy.deepcopy(node_init_temp[i])
+            if not i in node_init:
+                node_init[i] = copy.deepcopy(node_init_temp[i])
         
         global node_info
         #Load node infos
@@ -2528,66 +2912,13 @@ class DraggableLabelApp(MDApp):
         self.past_messages.append({"role": role, "content": content})
         if role == "user":
             print(f"User: {content}")
-    
-    def generate_documentation(self, code_path):
-        message = []
-        code_message = ""
-        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
         
-        file_path = code_path  # Specify the path to your file
-        with open(file_path, "r") as file:
-            code_message = file.read()
-        file_name = Path(file_path).name
-        params = f"Code Name: {file_name}\nCode Path: {code_path}"
-        file = file_name.replace(".py", "")
-        importation = f"To import this module do:\nimport sys\nsys.path.append(\"{file_path}\") #Add the utils' directory to the Python path\n\nThen:\nimport {file}   #Now you can import the module as usual\n\n"
-        
-        doc_format = """
-        Code Location: {code_location} # Full path to the code
-
-        Code Name: {code_name}
-
-        Functions:
-
-        Function Name: {function_name_1}
-        Description: {function_description_1}
-        Input Arguments:
-        {input_args_1}
-        Output Arguments:
-        {output_args_1}
-        Example Usage:
-        {function_name_1}({input_args_1})
-        Function Name: {function_name_2}
-        Description: {function_description_2}
-        Input Arguments:
-        {input_args_2}
-        Output Arguments:
-        {output_args_2}
-        Example Usage:
-        {function_name_2}({input_args_2})
-        """
-        gen_message = f"Create documentation for this code with given parameters.\n\nParameters:{params}\n\nCode:\n{code_message}\n\nIn this format: \n{doc_format}"
-        message.append({"role": "user", "content": gen_message})
-        chat_completion = client.chat.completions.create(
-          messages=message,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
-        )
-        
-        response = chat_completion.choices[0].message.content
-        response = response.replace("\\_", "_")
-
-        # Print the assistant's response
-        print("Bot: ", response)
-        file_path = f"{file_name}_doc.txt"  # Specify the path to your file
-        text_to_write = importation + response
-
-        with open(file_path, "w") as file:
-            file.write(text_to_write)
-    
     # Function to continue the conversation
-    def continue_conversation(self, model=None):
+    def continue_conversation(self, model=None, context=None):
         #print(past_messages)
         # Create the chat completion request with updated past messages
+        if context:
+            self.add_message("context", context)
         chat_completion = client.chat.completions.create(
           messages=self.past_messages,
           model=model or "mistralai/Mixtral-8x7B-Instruct-v0.1"
