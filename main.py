@@ -390,7 +390,7 @@ class NewNodeScreen(Screen):
         #Update node_init
         print("Saving...")
         data = {
-            "function_name": self.current_name,
+            "function_name": self.name_input.text,
             "import_string" : None,
             "function_string" : self.current_code or self.description_textinput.text,
             "description" : self.current_description or self.description_textinput.text,
@@ -400,7 +400,7 @@ class NewNodeScreen(Screen):
         }
         
         global node_init
-        node_init[self.current_name] = data
+        node_init[self.name_input.text] = data
         print(node_init)
         #Save node_init
         print("Node Init: ")
@@ -2721,10 +2721,21 @@ class SelectNodeScreen(Screen):
         
         # Create the back button layout
         back_box = BoxLayout(size_hint=(1, None), height=40)
+        
         back_button = Button(text="Back")
         back_button.bind(on_press=self.back_button_on_press)
-        back_box.add_widget(back_button)
         
+        refresh_button = Button(text="Refresh")
+        refresh_button.bind(on_press=self.refresh_components)
+        back_box.add_widget(back_button)
+        back_box.add_widget(refresh_button)
+        
+        search_box = BoxLayout(size_hint=(1, None), height=40)
+        
+        self.search_input = TextInput(size_hint_x = .75, multiline=False)
+        search_button = Button(text="Search", size_hint_x = .25)
+        search_box.add_widget(self.search_input)
+        search_box.add_widget(search_button)
         # Create the main scroll view
         main_scroll = ScrollView(size_hint=(1, 1))
         
@@ -2732,25 +2743,36 @@ class SelectNodeScreen(Screen):
         self.main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
         self.main_layout.bind(minimum_height=self.main_layout.setter('height'))
         
-        self.add_custom_componentes()
+        self.add_custom_components()
         
         # Add the main layout to the scroll view
         main_scroll.add_widget(self.main_layout)
         
         # Add the back button and scroll view to the screen layout
         screen_layout.add_widget(back_box)
+        screen_layout.add_widget(search_box)
         screen_layout.add_widget(main_scroll)
         
         # Add the screen layout to the screen
         self.add_widget(screen_layout)
         
         #self.clear_custom_components()
+    def search_nodes(self, instance):
+        for i in node_init:
+            
+    def refresh_components(self, instance):
+        self.clear_custom_components()
+        self.add_custom_components()
+        
     def clear_custom_components(self):
         # Clear all children from the main layout
+        print("Cleared!")
         self.main_layout.clear_widgets()
-    def add_custom_componentes(self):
+    def add_custom_components(self):
         # Add custom components to the main layout
+        print("Added!")
         for i in node_init:  # Adding multiple custom components
+            print(i)
             custom_component = NewNodeComponent(text=f"{i}")
             custom_component.size_hint_y = None
             custom_component.height = 50
