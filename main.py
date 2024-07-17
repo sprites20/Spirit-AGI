@@ -31,6 +31,32 @@ By iterating through button nodes and binding with their
 
 """
 
+"""
+NOW:
+
+Add more nodes
+Facebook search
+Google Search
+Image Search
+Vectara RAG
+STT
+LLava
+
+Map Processor
+Reverse Geocoding
+Geocoding
+Place Search
+
+Map Integration
+
+And UI for multiagent
+Screenshot Node
+
+Transpiler
+
+Node Optimizer
+"""
+
 from kivy.config import Config
 
 from kivy.lang import Builder
@@ -56,7 +82,7 @@ from kivy.graphics import RenderContext, Callback, PushMatrix, PopMatrix, \
 from kivy.uix.codeinput import CodeInput
 from kivy.properties import Property
 from objloader import ObjFile
-#from tkinter import Tk, filedialog
+from tkinter import Tk, filedialog
 from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
 from kivy.clock import Clock
@@ -64,6 +90,12 @@ from kivy.properties import NumericProperty
 from kivy.core.audio import SoundLoader
 import pyttsx3
 
+import osmnx as ox
+import networkx as nx
+import matplotlib.pyplot as plt
+
+from pyproj import Proj, transform
+from pygments.lexers import PythonLexer
 
 from textblob import TextBlob
 
@@ -101,13 +133,13 @@ import pytesseract
 from PIL import Image
 import cv2
 
+import ast
+
+from mistralai.client import MistralClient
+from mistralai.models.chat_completion import ChatMessage
 
 import cohere
-from TTS.api import TTS
-try:
-    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True)
-except:
-    pass
+
 #Retrieve Code Documentation
 API_KEY = "BXyTrgsV2PMbRuvDYu9ZwfLHObeTkR4SvPoZAvtf"
 
@@ -134,6 +166,9 @@ client = OpenAI(
   api_key=TOGETHER_API_KEY,
   base_url='https://api.together.xyz/v1',
 )
+
+MISTRAL_API_KEY = "VuNE7EzbFp5QA0zoYl0LokvrTitF7yrg"
+client_mistral = MistralClient(api_key=MISTRAL_API_KEY)
 
 """
 genai.configure(api_key='AIzaSyDc0qXo8TxNxv7xAksgwdWtP0Fl1ai6heg')
@@ -170,6 +205,9 @@ def is_point_in_ellipse(point, center, size):
 """
 We gotta exec the funciton string and import string
 """
+
+def is_module_imported(module_name):
+    return module_name in sys.modules
 
 def generate_documentation(code_path):
         message = []
@@ -396,7 +434,8 @@ class NewNodeScreen(Screen):
             
     def generate_code(self, instance, context, gen_from):
         message = []
-        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+        new_message = ChatMessage(role = "system", content = "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.")
+        message.append(new_message)
         
         inputs = self.input_textinput.text or ""
         outputs = self.output_textinput.text or ""
@@ -408,11 +447,20 @@ async def {self.current_name}(node, {{input1}}, {{input2}}): #Remember to change
         return {{{{\"output1\"}} : "", {{\"output2\"}} : []}} #Remember to change based on Outputs.
         """
         
-        gen_message = f"Generate python code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\nMake sure to replace inputs and outputs with the given names. Output nothing else but the code with indentations. Enclose with ```"
-        message.append({"role": "user", "content": gen_message})
+        gen_message = f"Generate python code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\nMake sure to replace inputs and outputs with the given names. Output nothing else but the code with indentations. Enclose with ```python"
+        new_message = ChatMessage(role = "user", content = gen_message)
+        message.append(new_message)
+        """
         chat_completion = client.chat.completions.create(
           messages=message,
           model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        """
+
+        model = "codestral-latest"
+        chat_completion = client_mistral.chat(
+            model=model,
+            messages=message
         )
         
         response = chat_completion.choices[0].message.content
@@ -428,8 +476,8 @@ async def {self.current_name}(node, {{input1}}, {{input2}}): #Remember to change
             
     def generate_description(self, instance, context, gen_from):
         message = []
-        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
-        
+        new_message = ChatMessage(role = "system", content = "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.")
+        message.append(new_message)
         inputs = self.input_textinput.text or ""
         outputs = self.output_textinput.text or ""
         self.current_name = self.name_input.text or ""
@@ -445,10 +493,19 @@ It is used when asked:
         """
         
         gen_message = f"Generate short description code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\n. Output nothing else but the description."
-        message.append({"role": "user", "content": gen_message})
+        new_message = ChatMessage(role = "user", content = gen_message)
+        message.append(new_message)
+        """
         chat_completion = client.chat.completions.create(
           messages=message,
           model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        """
+
+        model = "codestral-latest"
+        chat_completion = client_mistral.chat(
+            model=model,
+            messages=message
         )
         
         response = chat_completion.choices[0].message.content
@@ -463,7 +520,8 @@ It is used when asked:
     def generate_documentation(self, instance, context, gen_from):
         message = []
         code_message = ""
-        message.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+        new_message = ChatMessage(role = "system", content = "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.")
+        message.append(new_message)
         
         inputs = self.input_textinput.text or ""
         outputs = self.output_textinput.text or ""
@@ -483,11 +541,21 @@ It is used when asked:
         {function_name_1}({input_args_1})
         """
         
+        
         gen_message = f"Generate documentation of code given parameters. Base on what the code does\n\nInputs:{inputs}\n\nOutputs:{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}"
-        message.append({"role": "user", "content": gen_message})
+        new_message = ChatMessage(role = "user", content = gen_message)
+        message.append(new_message)
+        """
         chat_completion = client.chat.completions.create(
           messages=message,
           model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+        )
+        """
+
+        model = "codestral-latest"
+        chat_completion = client_mistral.chat(
+            model=model,
+            messages=message
         )
         
         response = chat_completion.choices[0].message.content
@@ -1499,8 +1567,19 @@ node_init = {
         "function_name": "text_to_wav_instance",
         "import_string" : None,
         "function_string" : """
+'''
+async def text_to_wav_instance(node, text):
+    return None
+'''
+
 import time
 import wave
+
+from TTS.api import TTS
+try:
+    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True)
+except:
+    pass
 def split_long_sentence(sentence, max_length=250):
     if len(sentence) <= max_length:
         return [sentence]
@@ -1587,6 +1666,7 @@ async def text_to_wav_instance(node, text):
         sound = SoundLoader.load(filename)
         node.args["sound"] = sound
         return {"speech_wav" : sound}
+
         """,
         "description" : None,
         "documentation" : None,
@@ -1659,10 +1739,43 @@ async def file_chooser(node):
         node.output_args = {"user_image" : None}
         return {"user_image" : None}
     else:
-        #root = Tk()
-        #root.withdraw()
-        #file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
-        #root.destroy()
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename()
+        root.destroy()
+        def pop(dt):
+            popup = Popup(title='No file selected',
+                          content=Label(text='No file selected.'),
+                          size_hint=(None, None), size=(400, 200))
+            popup.open()
+        if file_path:
+            #self.image.source = file_path
+            return {"dir" : file_path}
+        else:
+            Clock.schedule_once(pop)
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        },
+        "outputs": {
+            "dir" : "string"
+        }
+    },
+    "image_chooser" : {
+        "function_name": "image_chooser",
+        "import_string" : None,
+        "function_string" : """
+async def image_chooser(node):
+    print(node, node.node_id, node.output_args)
+    if node.trigger_in.startswith("display_output"):
+        node.output_args = {"user_image" : None}
+        return {"user_image" : None}
+    else:
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+        root.destroy()
         def pop(dt):
             popup = Popup(title='No file selected',
                           content=Label(text='No file selected.'),
@@ -1812,6 +1925,71 @@ async def context(node):
                 "context" : "string",
             }
         },
+    "reset_outputs" : {
+            "function_name": "reset_outputs",
+            "import_string" : None,
+            "function_string" : """
+async def reset_outputs(node):
+    return None
+            """,
+            "description" : None,
+            "documentation" : None,
+            "inputs" : {
+            },
+            "outputs": {
+            }
+        },
+    "is_greater_than" : {
+        "function_name": "is_greater_than",
+        "import_string" : None,
+        "function_string" : """
+async def is_greater_than(node, A=None, B=None):
+    return {"is_greater_than" : A > B}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "A" : "bool",
+            "B" : "bool"
+        },
+        "outputs": {
+            "is_greater_than" : "bool"
+        }
+    },
+    "is_less_than" : {
+        "function_name": "is_less_than",
+        "import_string" : None,
+        "function_string" : """
+async def is_less_than(node, A=None, B=None):
+    return {"is_less_than" : A < B}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "A" : "bool",
+            "B" : "bool"
+        },
+        "outputs": {
+            "is_less_than" : "bool"
+        }
+    },
+    "is_equal" : {
+        "function_name": "is_equal",
+        "import_string" : None,
+        "function_string" : """
+async def is_equal(node, A=None, B=None):
+    return {"is_equal" : A == B}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "A" : "bool",
+            "B" : "bool"
+        },
+        "outputs": {
+            "is_equal" : "bool"
+        }
+    },
     "prompt" : {
         "function_name": "prompt",
         "import_string" : None,
@@ -2451,7 +2629,42 @@ KV = '''
                             size_hint: None, None
                             size: 50, 50  # Set a fixed size for the Image
                             pos_hint: {'center_x': 0.5, 'center_y': 0.5}  # Center the Image initially
-           
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint: (1, None)
+            height: 40
+            canvas.before:
+                Color:
+                    rgba: 0.25, 0.25, 0.25, 1  # Background color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            MDIconButton:
+                text: "file_attachment"
+                pos_hint: {'center_x': .5, 'center_y': 0.5}  # Center the MDIconButton initially
+                size_hint: None, None
+                size: 40, 40
+                padding_x: 10
+                #pos: self.parent.center_x - self.width / 2, self.parent.center_y - self.height / 2  # Position the MDIconButton at the center of its parent
+                #on_release: app.button_pressed()  # Define the action to be taken when the button is released
+                Image:
+                    source: "images/file_attach.png"
+                    size_hint: None, None
+                    size: 40, 40  # Set a fixed size for the Image
+                    pos_hint: {'center_x': 0.5, 'center_y': 0.5}  # Center the Image initially
+            MDIconButton:
+                text: "other_obj"
+                size_hint: None, None
+                size: 40, 40
+                pos_hint: {'right': 1, 'center_y': 0.5}  # Position the MDIconButton at the rightmost side, center vertically
+                #pos: (self.parent.width - self.width - 10, self.parent.center_y - self.height / 2)  # Position the MDIconButton to the rightmost side
+                padding_x: 10
+                # on_release: app.button_pressed()  # Define the action to be taken when the button is released
+                Image:
+                    source: "images/file_attach.png"
+                    size_hint: None, None
+                    size: 40, 40  # Set a fixed size for the Image
+                    pos_hint: {'center_x': 0.5, 'center_y': 0.5}  # Center the Image initially
      
 ScreenManager:
     id: screen_manager
@@ -2663,7 +2876,7 @@ class WidgetTreeScreen(Screen):
     def update_widget_tree(self, widget_tree):
         #self.tree_view.clear_widgets()
         self.tree_view.add_widget_tree(None, widget_tree)
-        
+
     def create_node(self, instance):
         if isinstance(self.selected_widget, Button) or isinstance(self.selected_widget, MDIconButton) and self.selected_node not in button_nodes:
             button_nodes[self.selected_node] = self.selected_widget
@@ -2671,6 +2884,7 @@ class WidgetTreeScreen(Screen):
             # Bind the button to a lambda function with a variable
             self.selected_widget.bind(on_press=lambda instance, node=self.selected_node: self.on_run_press_wrapper(instance, node))
             print("Bound Node")
+            
             node_init[self.selected_node] = {
                 "function_name": self.selected_node,
                 "import_string" : None,
@@ -2678,10 +2892,12 @@ class WidgetTreeScreen(Screen):
                 "description" : None,
                 "documentation" : None,
                 "inputs" : {
+                    
                 },
                 "outputs": {
                 }
             }
+
             #ui_node_screens[self.selected_node] = 
             print(node_init[self.selected_node])
             self.parent.get_screen('draggable_label_screen').new_node(node_name=self.selected_node, new_node_id=self.selected_node)
@@ -2714,6 +2930,15 @@ class WidgetTreeScreen(Screen):
             loop.run_until_complete(self.on_run_press(node))
 
         threading.Thread(target=run_coroutine_in_event_loop).start()    
+    def parse_to_valid_function_name(self, input_string):
+        # Replace invalid characters with underscores
+        valid_name = re.sub(r'[^0-9a-zA-Z_]', '_', input_string)
+
+        # Ensure the name starts with a letter or underscore
+        if not valid_name[0].isalpha() and valid_name[0] != '_':
+            valid_name = '_' + valid_name
+
+        return valid_name
     def display_widget_properties(self, widget):
         self.text_input.text = ""
         print(widget)
@@ -2725,6 +2950,7 @@ class WidgetTreeScreen(Screen):
                         self.text_input.text += f"{attr_name}: {value}\n"
                         if attr_name == "text":
                             self.selected_node = f"Button : {value}"
+                            #self.selected_node = self.parse_to_valid_function_name(self.selected_node)
                             self.selected_widget = widget
                             #Create a node_init of name
                             #Generate bindings
