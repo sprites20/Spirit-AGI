@@ -431,7 +431,7 @@ class NewNodeScreen(Screen):
             self.generate_documentation(instance = None, context=self.current_code, gen_from="code")
         else:
             self.current_code = self.description_textinput.text
-            
+    
     def generate_code(self, instance, context, gen_from):
         message = []
         new_message = ChatMessage(role = "system", content = "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.")
@@ -2700,8 +2700,7 @@ class NewNodeComponent(BoxLayout):
         
         self.add_widget(self.label)
         self.add_widget(self.button_box)
-        
-        
+ 
     def button_on_press(self, instance):
         try:
             print(self.text)
@@ -2733,12 +2732,7 @@ class SelectNodeScreen(Screen):
         self.main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
         self.main_layout.bind(minimum_height=self.main_layout.setter('height'))
         
-        # Add custom components to the main layout
-        for i in node_init:  # Adding multiple custom components
-            custom_component = NewNodeComponent(text=f"{i}")
-            custom_component.size_hint_y = None
-            custom_component.height = 50
-            self.main_layout.add_widget(custom_component)
+        self.add_custom_componentes()
         
         # Add the main layout to the scroll view
         main_scroll.add_widget(self.main_layout)
@@ -2750,6 +2744,119 @@ class SelectNodeScreen(Screen):
         # Add the screen layout to the screen
         self.add_widget(screen_layout)
         
+        #self.clear_custom_components()
+    def clear_custom_components(self):
+        # Clear all children from the main layout
+        self.main_layout.clear_widgets()
+    def add_custom_componentes(self):
+        # Add custom components to the main layout
+        for i in node_init:  # Adding multiple custom components
+            custom_component = NewNodeComponent(text=f"{i}")
+            custom_component.size_hint_y = None
+            custom_component.height = 50
+            self.main_layout.add_widget(custom_component)
+    
+    def fetch_and_process_query(user_query):
+        url = "https://api.vectara.io/v2/query"
+        
+        payload = json.dumps({
+            "query": f"{user_query}",
+            "search": {
+                "corpora": [
+                    {
+                        "custom_dimensions": {},
+                        "metadata_filter": "doc.date_downloaded<'2024-06-18'",
+                        "lexical_interpolation": 0.025,
+                        "semantics": "default",
+                        "corpus_key": "Semantic_Search_2"
+                    }
+                ],
+                "offset": 0,
+                "limit": 5,
+                "context_configuration": {
+                    "characters_before": 30,
+                    "characters_after": 30,
+                    "sentences_before": 3,
+                    "sentences_after": 3,
+                    "start_tag": "<em>",
+                    "end_tag": "</em>"
+                },
+            },
+            "stream_response": False
+        })
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'customer-id': '4239971555',
+            'x-api-key': 'zwt__LjU4zVE9TBF1tU4SbJ0rrjT1QWwI2sXXp4iGQ'
+        }
+
+        # Make the request
+        response = requests.request("POST", url, headers=headers, data=payload)
+        
+        # Check if the request was successful
+        if response.status_code != 200:
+            raise Exception(f"Request failed with status code {response.status_code}")
+
+        # Save the JSON response to a file
+        with open('response.json', 'w') as f:
+            json.dump(response.json(), f, indent=4)
+
+        # Load the JSON response from the file
+        with open('response.json', 'r') as f:
+            json_result = json.load(f)
+
+        # Extract and print the context
+        context = ""
+        for result in json_result['search_results']:
+            context += f"Text: {result['text']}\n\n"
+            print(f"Text: {result['text']}\n\n")
+        
+        return context
+        # Example usage
+        """
+        user_query = "sarin gas"
+        context = fetch_and_process_query(user_query)
+        print(context)
+        """
+    def send_one_node_to_vectara(self, json_data, metadata_args, file_path):
+        metadata = {
+            #"metadata_key": "metadata_value",
+            "date_downloaded": metadata_args["date_downloaded"],
+            "date_uploaded": re.sub(r'[/:.]', '_', datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")),
+            "epoch" : int(time.time()),
+            "node_name" : metadata_args["node_name"],
+            "filename" : metadata_args["filename"],
+        }
+        json_data_bytes = json.dumps(json_data).encode('utf-8')
+        url = "https://api.vectara.io/v1/upload?c=4239971555&o=2"
+        headers = {
+            'x-api-key': 'zwt__LjU4zVE9TBF1tU4SbJ0rrjT1QWwI2sXXp4iGQ'
+        }
+        now = datetime.utcnow().strftime("%Y_%m_%d %H_%M_%S UTC")
+        # Save the JSON-formatted string to a file
+        with open(f"pages_json/{metadata['filename']}.json", "w") as file:
+            file.write(json.dumps(json_data))
+        files = {
+            "file": (f"{metadata['filename']}", json_data_bytes, 'rb'),
+            "doc_metadata": (None, json.dumps(metadata)),  # Replace with your metadata
+        }
+        response = requests.post(url, headers=headers, files=files)
+        print(response.text)
+    def delete_node(self, corpus_key, document_id):
+        url = f"https://api.vectara.io/v2/corpora/{corpus_key}/documents/{document_id}"
+        #url = "https://api.vectara.io/v2/corpora/Semantic_Search_2/documents/2024-04-18%2013_21_57%20UTC|https___unstructured-io_github_io_unstructured_core_partition_html"
+        
+        payload={}
+        headers = {
+          'x-api-key': 'zwt__LjU4zVE9TBF1tU4SbJ0rrjT1QWwI2sXXp4iGQ'
+        }
+
+        response = requests.request("DELETE", url, headers=headers, data=payload)
+
+        print(response.text)
+    
     def back_button_on_press(self, instance):
         app = MDApp.get_running_app()
         self.manager.transition = NoTransition()
@@ -2976,6 +3083,7 @@ async def ignition(node):
 
 print("Updated function string")
         """
+
         exec(function_string, globals())
 
 
@@ -2990,8 +3098,12 @@ print(\"Added\", {function_name})
                 exec(node_init[i]["import_string"], globals())
             except:
                 pass
-            exec(node_init[i]["function_string"], globals())
-            exec(formatted_string, globals())
+            try:
+                exec(node_init[i]["function_string"], globals())
+                exec(formatted_string, globals())
+            except:
+                pass
+            
         self.layout = BoxLayout(orientation='vertical')
         self.build()
         
