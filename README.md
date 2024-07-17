@@ -6,7 +6,7 @@ pip install -r requirements.txt
 Then
 
 ```
-python somecbox3.py
+python main.py
 ```
 or
 
