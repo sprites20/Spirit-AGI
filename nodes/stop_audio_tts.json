@@ -1,0 +1,11 @@
+{
+    "function_name": "stop_audio_tts",
+    "import_string": null,
+    "function_string": "\nasync def stop_audio_tts(node, sound):\n    pass\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "sound": "sound"
+    },
+    "outputs": {}
+}

@@ -1,0 +1,14 @@
+{
+    "function_name": "is_less_than",
+    "import_string": null,
+    "function_string": "\nasync def is_less_than(node, A=None, B=None):\n    return {\"is_less_than\" : A < B}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "A": "bool",
+        "B": "bool"
+    },
+    "outputs": {
+        "is_less_than": "bool"
+    }
+}

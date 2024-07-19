@@ -1,0 +1,9 @@
+{
+    "function_name": "ignition",
+    "import_string": null,
+    "function_string": "\nasync def ignition(node):\n    print(\"Ignition\")\n    await asyncio.sleep(.25)\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {}
+}

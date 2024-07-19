@@ -1,0 +1,11 @@
+{
+    "function_name": "delay",
+    "import_string": null,
+    "function_string": "\nasync def delay(node, delay_seconds=None):\n    if node.trigger_in.startswith(\"time_delta_seconds\"):\n        \n        asyncio.sleep(delay_seconds)\n    elif delay_seconds:\n        asyncio.sleep(delay_seconds)\n    return None\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "delay_seconds": "string"
+    },
+    "outputs": {}
+}

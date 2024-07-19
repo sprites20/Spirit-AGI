@@ -1,0 +1,17 @@
+{
+    "function_name": "prompt",
+    "import_string": null,
+    "function_string": "\nasync def prompt(node, model=None, user_prompt=None, context=None):\n    app = MDApp.get_running_app()\n    print(\"Prompt\")\n    print(model, user_prompt, context)\n    await asyncio.sleep(.25)\n    user_text = user_prompt\n    instruct_type = app.get_instruct_type(user_text)\n    if context:\n        context = \"OCR output:\\n\" + context\n        print(\"context: \", context)\n    generated_image_path = \"\"\n    if instruct_type == 1:\n        generated_image_path = app.generate_image_prompt(user_text)\n    if instruct_type == 2:\n        pass\n    # Continue the conversation            \n    response = app.continue_conversation(context=context)\n    print(\"output: \", response)\n    return {\"output\" : response, \"instruct_type\" : instruct_type, \"generated_image_path\" : generated_image_path}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "model": "string",
+        "user_prompt": "string",
+        "context": "string"
+    },
+    "outputs": {
+        "output": "string",
+        "instruct_type": "num",
+        "generated_image_path": "string"
+    }
+}

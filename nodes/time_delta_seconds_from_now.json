@@ -1,0 +1,13 @@
+{
+    "function_name": "time_delta_seconds",
+    "import_string": null,
+    "function_string": "\nasync def time_delta_seconds(node, given_date_time_str):\n    now = datetime.now()\n    \n    # Given date and time\n    given_date_time = datetime.strptime(given_date_time_str, \"%Y-%m-%d %H:%M:%S\")\n    \n    # Calculate the difference\n    delta = now - given_date_time\n    \n    # Convert the difference to seconds\n    delta_seconds = delta.total_seconds()\n    \n    return {\"seconds\" : delta_seconds}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "given_date_time_str": "string"
+    },
+    "outputs": {
+        "seconds": "num"
+    }
+}

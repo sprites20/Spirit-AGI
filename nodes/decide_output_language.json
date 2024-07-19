@@ -1,0 +1,17 @@
+{
+    "function_name": "decide_output_language",
+    "import_string": null,
+    "function_string": "\nasync def decide_output_language(node, user_language=None, listener_language=None, user_prompt=None, user_info=None, listener_info=None):\n    if input_text:\n        try:\n            language_code = detect(user_prompt)\n            language = language_codes[language_code]\n            return {\"language\" : language}\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return {\"language\" : \"English\"}\n    else:\n        return {\"language\" : \"English\"}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "user_prompt": "string",
+        "user_language": "string",
+        "user_info": "string",
+        "listener_language": "string",
+        "listener_info": "string"
+    },
+    "outputs": {
+        "language": "string"
+    }
+}

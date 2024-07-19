@@ -1,0 +1,9 @@
+{
+    "function_name": "pass_node",
+    "import_string": null,
+    "function_string": "\nasync def pass_node(node):\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {}
+}

@@ -1,0 +1,9 @@
+{
+    "function_name": "reset_outputs",
+    "import_string": null,
+    "function_string": "\nasync def reset_outputs(node):\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {}
+}

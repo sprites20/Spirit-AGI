@@ -1,0 +1,12 @@
+{
+    "function_name": "play_audio_tts",
+    "import_string": null,
+    "function_string": "\nasync def play_audio_tts(node, sound, duration):\n    if node.trigger_in.startswith(\"text_to_wav_instance\"):\n        if not \"sounds\" in node.args:\n            print(\"Sounds Created\")\n            node.args[\"sounds\"] = []\n            sound.play()\n        if not \"durations\" in node.args:\n            print(\"Durations Created\")\n            node.args[\"durations\"] = []\n        node.args[\"sounds\"].append(sound)\n        node.args[\"durations\"].append(duration)\n        \n    if node.trigger_in.startswith(\"pass_node\"):\n        if node.args[\"sounds\"]:\n            node.args[\"sounds\"][0].play()\n            await asyncio.sleep(node.args[\"durations\"][0])\n            \n            node.args[\"sounds\"].pop(0)\n            node.args[\"durations\"].pop(0)\n            \n            await asyncio.sleep(2)\n            #Delay by audio duration\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "sound": "sound",
+        "duration": "num"
+    },
+    "outputs": {}
+}

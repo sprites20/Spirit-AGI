@@ -1,0 +1,11 @@
+{
+    "function_name": "user_input",
+    "import_string": null,
+    "function_string": "\nasync def user_input(node):\n    print(\"user_input\")\n    await asyncio.sleep(.25)\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {
+        "user_input": "string"
+    }
+}

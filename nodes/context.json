@@ -1,0 +1,11 @@
+{
+    "function_name": "context",
+    "import_string": null,
+    "function_string": "\nasync def context(node):\n    print(\"context\")\n    await asyncio.sleep(.25)\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {
+        "context": "string"
+    }
+}

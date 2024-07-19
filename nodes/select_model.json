@@ -1,0 +1,11 @@
+{
+    "function_name": "select_model",
+    "import_string": null,
+    "function_string": "\nasync def select_model(node):\n    print(\"select_model\")\n    await asyncio.sleep(.25)\n    return None\n            ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {
+        "model": "string"
+    }
+}

@@ -1,0 +1,13 @@
+{
+    "function_name": "detect_language",
+    "import_string": null,
+    "function_string": "\nasync def detect_language(node, input_text=None):\n    if input_text:\n        try:\n            co = cohere.Client(cohere_api_key) # This is your trial API key\n            # Detect the language of the text\n            # Print the language code and name\n            response = co.generate(\n            model='c4ai-aya-23',\n            prompt=\"Input Text:\\n\" + input_text + \"\\nDetect language, output only ISO 639 language code in format, based on language not content:\\ncode: en,fr,jp,etc.\",\n            max_tokens=30,\n            temperature=0.1,\n            k=0,\n            stop_sequences=[],\n            return_likelihoods='NONE')\n            language_code=response.generations[0].text\n            print(response.generations[0].text)\n            language = language_codes[language_code]\n            print(language_code)\n            print(\"language: \", language)\n            return {\"language\" : language}\n        except Exception as e:\n            print(f\"Error: {e}\")\n            return {\"language\" : \"unknown\"}\n    else:\n        return {\"language\" : \"unknown\"}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "input_text": "string"
+    },
+    "outputs": {
+        "language": "string"
+    }
+}

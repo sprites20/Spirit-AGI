@@ -1,0 +1,11 @@
+{
+    "function_name": "file_chooser",
+    "import_string": null,
+    "function_string": "\nasync def file_chooser(node):\n    print(node, node.node_id, node.output_args)\n    if node.trigger_in.startswith(\"display_output\"):\n        node.output_args = {\"user_image\" : None}\n        return {\"user_image\" : None}\n    else:\n        root = Tk()\n        root.withdraw()\n        file_path = filedialog.askopenfilename()\n        root.destroy()\n        def pop(dt):\n            popup = Popup(title='No file selected',\n                          content=Label(text='No file selected.'),\n                          size_hint=(None, None), size=(400, 200))\n            popup.open()\n        if file_path:\n            #self.image.source = file_path\n            return {\"dir\" : file_path}\n        else:\n            Clock.schedule_once(pop)\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {},
+    "outputs": {
+        "dir": "string"
+    }
+}

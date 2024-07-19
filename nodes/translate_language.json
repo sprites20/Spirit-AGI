@@ -1,0 +1,15 @@
+{
+    "function_name": "translate_language",
+    "import_string": null,
+    "function_string": "\nasync def translate_language(node, input_text=None, input_language=None, output_language=\"English\"):\n    if input_text:\n        if input_language != output_language:\n            global cohere_api_key\n            co = cohere.Client(cohere_api_key) # This is your trial API key\n            fix_prompt = f'Translate each sentence into {output_language}, output only the translation:'\n            response = co.generate(\n                model='c4ai-aya-23',\n                prompt=fix_prompt + input_text,\n                max_tokens=20000,\n                temperature=0.9,\n                k=0,\n                stop_sequences=[],\n                return_likelihoods='NONE')\n            print(\"Translated\", response.generations[0].text)\n            output_text = response.generations[0].text\n            return {\"output_text\" : output_text}\n        else:\n            return {\"output_text\" : input_text}\n    else:\n        return {\"output_text\" : None}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "input_text": "string",
+        "input_language": "string",
+        "output_language": "string"
+    },
+    "outputs": {
+        "output_text": "string"
+    }
+}
