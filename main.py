@@ -128,6 +128,8 @@ import re
 import requests
 import threading
 import copy
+from pathlib import Path
+
 
 import pytesseract
 from PIL import Image
@@ -404,7 +406,9 @@ class NewNodeScreen(Screen):
         print(node_init)
         #Save node_init
         print("Node Init: ")
-        f = open("node_init.json", "w")
+        # Ensure the 'nodes' directory exists
+        os.makedirs("nodes", exist_ok=True)
+        f = open(f"nodes/{self.name_input.text}.json", "w")
         f.write(json.dumps(node_init))
         f.close()
     
@@ -765,7 +769,7 @@ class AsyncNode:
             output_args = await function_to_call(self, **input_args)
             Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
             print("Output args: ", output_args)
-
+            
             # Update output_args with the function's output, appending new args and replacing existing ones
             try:
                 for arg_name, value in output_args.items():
@@ -1562,6 +1566,17 @@ class DraggableLabel(DragBehavior, Label):
             print("Connections: ", connections)
         return super(DraggableLabel, self).on_touch_up(touch)
 image_components = []
+
+
+def save_dicts_as_json_files(data, output_directory):
+    output_path = Path(output_directory)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    for key, value in data.items():
+        file_path = output_path / f"{key}.json"
+        with file_path.open('w') as f:
+            json.dump(value, f, indent=4)
+
 node_init = {
     "text_to_wav_instance" : {
         "function_name": "text_to_wav_instance",
@@ -1574,9 +1589,8 @@ async def text_to_wav_instance(node, text):
 
 import time
 import wave
-
-from TTS.api import TTS
 try:
+    from TTS.api import TTS
     tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=True)
 except:
     pass
@@ -2254,6 +2268,33 @@ async def decide_output_language(node, user_language=None, listener_language=Non
     
 }
 
+node_init = {}
+
+def load_json_files_to_dict(directory):
+    path = Path(directory)
+    data_dict = {}
+    
+    # Iterate through all JSON files in the directory
+    for json_file in path.rglob("*.json"):
+        with json_file.open('r') as f:
+            # Load JSON data
+            data = json.load(f)
+            # Store data in the dictionary with file name (without extension) as the key
+            data_dict[json_file.stem] = data
+    
+    return data_dict
+
+# Example usage
+directory_path = "nodes"  # Directory containing the JSON files
+
+# Load JSON files into a dictionary
+node_init = load_json_files_to_dict(directory_path)
+
+# Example usage
+output_directory_path = "nodes"
+
+# Save each dictionary to separate JSON files
+#save_dicts_as_json_files(node_init, output_directory_path)
 #def newNode(node):
 
 def generate_node_id(name):
@@ -2674,6 +2715,7 @@ ScreenManager:
     RenderScreen:
     NewNodeScreen:
     WidgetTreeScreen:
+    
 '''
 
 class CustomComponent(BoxLayout):
@@ -2700,7 +2742,7 @@ class NewNodeComponent(BoxLayout):
         
         self.add_widget(self.label)
         self.add_widget(self.button_box)
- 
+
     def button_on_press(self, instance):
         try:
             print(self.text)
@@ -2759,6 +2801,7 @@ class SelectNodeScreen(Screen):
         #self.clear_custom_components()
     def search_nodes(self, instance):
         for i in node_init:
+            pass
             
     def refresh_components(self, instance):
         self.clear_custom_components()
@@ -2768,6 +2811,7 @@ class SelectNodeScreen(Screen):
         # Clear all children from the main layout
         print("Cleared!")
         self.main_layout.clear_widgets()
+        
     def add_custom_components(self):
         # Add custom components to the main layout
         print("Added!")
@@ -2924,7 +2968,7 @@ class CustomLabel(ButtonBehavior, Label):
     def _do_long_press(self, *args):
         self.dispatch('on_long_press')
     pass
-
+        
 class TransparentBoxLayout(BoxLayout):
     pass
 
