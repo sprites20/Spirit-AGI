@@ -150,7 +150,6 @@ from pathlib import Path
 
 
 import pytesseract
-from PIL import Image
 import cv2
 
 import ast
@@ -769,7 +768,6 @@ class AsyncNode:
             input_args = {}
             print(self.input_addresses)
             for address in self.input_addresses:
-                
                 node = address.get("node")
                 arg_name = address.get("arg_name")
                 target = address.get("target")
@@ -786,7 +784,7 @@ class AsyncNode:
             Clock.schedule_once(lambda dt: self.change_to_red(), 0)
             output_args = await function_to_call(self, **input_args)
             Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
-            print("Output args: ", output_args)
+            #print("Output args: ", output_args)
             
             # Update output_args with the function's output, appending new args and replacing existing ones
             try:
@@ -1861,7 +1859,7 @@ async def ignition(node):
         "function_name": "display_output",
         "import_string" : None,
         "function_string" : """
-async def display_output(node, user_input, output, instruct_type, generated_image_path, user_image):
+async def display_output(node, user_input=None, output=None, instruct_type=None, generated_image_path=None, user_image=None):
     app = MDApp.get_running_app()
     print("Display Output: ", user_input, output)
     user_text = user_input or "test"
@@ -1886,9 +1884,9 @@ async def display_output(node, user_input, output, instruct_type, generated_imag
             grid_layout.add_widget(CustomImageComponent(img_source=user_image))
         grid_layout.add_widget(bot_custom_component)
         
-        if instruct_type == 1:
-            #image_components.append(CustomImageComponent(img_source=generated_image_path))
-            grid_layout.add_widget(CustomImageComponent(img_source=generated_image_path))
+        if instruct_type == 2:
+            #image_components.append(CustomImageComponent(img_source=image_path))
+            grid_layout.add_widget(CustomImageComponent(img_source=image_path))
         
     # Schedule the update_ui function to run on the main thread
     Clock.schedule_once(update_ui)
@@ -1926,12 +1924,13 @@ async def select_model(node):
     "user_input" : {
             "function_name": "user_input",
             "import_string" : None,
-            "function_string" : """
+            "function_string" : '''
 async def user_input(node):
-    print("user_input")
-    await asyncio.sleep(.25)
-    return None
-            """,
+    app = MDApp.get_running_app()
+    user_input = app.root.get_screen("chatbox").ids.text_input.text
+    print("Printing user_input: ", user_input)
+    return {"user_input" : user_input}
+            ''',
             "description" : None,
             "documentation" : None,
             "inputs" : {
@@ -2036,17 +2035,33 @@ async def is_equal(node, A=None, B=None):
             "is_equal" : "bool"
         }
     },
-    "get_instruct_type" : {
-        "function_name": "get_instruct_type",
+    "get_instruct_type_node" : {
+        "function_name": "get_instruct_type_node",
         "import_string" : None,
-        "function_string" : """
-async def get_instruct_type(node, input_text=None):
+        "function_string" : '''
+async def get_instruct_type_node(node, user_input=None, context=None):
     # Input text containing the Python code block
-    
-    generate_code = f"User Input: {input_text}\nInstruct Types:\n0: Normal, normal conversation\n1: Generate Image, if user wants to generate an image\n2: Search Facebook, if user wants to search Facebook.\n3: Search Google, If user wants to do Web Search or if you don't know the answer or wants updated answer.4: Search Google with Images, If user wants to search images of an object\n, output only the number of the instruct type, with format: \nFormat: instruct type:<number>"
+    print("Running get instruct type")
+    asyncio.sleep(0.1)
+    if user_input == None:
+        return {"instruct_type" : 0}
+    generate_code = (
+        f"User Input: {user_input}\\n"
+        "Instruct Types:\\n"
+        "0: Error, if empty user input or just blank spaces, return this\\n"
+        "1: Normal, normal conversation\\n"
+        "2: Generate Image, if user wants to generate an image\\n"
+        "3: Search Facebook, if user wants to search Facebook.\\n"
+        "4: Search Google, If user wants to do Web Search or if you dont know the answer or wants updated answer.\\n"
+        "5: Search Google with Images, If user wants to search images of an object\\n"
+        "First justify why, then output only the number of the instruct type, with format: \\n"
+        "Format: instruct type:<number>"
+    )
     message_array = []
-    #message_array.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+    message_array.append({"role": "system", "content": "Your role is to decide what the instruct type to use based on the user intent."})
     message_array.append({"role": "user", "content": generate_code})
+    if context:
+        message_array.append({"role": "context", "content": context})
     chat_completion = client.chat.completions.create(
       messages=message_array,
       model="mistralai/Mixtral-8x7B-Instruct-v0.1"
@@ -2055,27 +2070,57 @@ async def get_instruct_type(node, input_text=None):
     response = chat_completion.choices[0].message.content
     print(response)
     # Use regular expression to find the instruct_type number
-    pattern = re.compile(r'instruct type\s*:\s*(\d+)')
+    pattern = re.compile(r"instruct type\\s*:\\s*(\\d+)")
     # Convert the string to all lowercase
     response = response.lower()
     match = pattern.search(response)
     instruct_type = None
     if match:
         instruct_type = int(match.group(1))
-        print(f'instruct_type number: {instruct_type}')
+        print(f"instruct_type number: {instruct_type}")
     else:
-        print('instruct_type not found in the data')
+        print("instruct_type not found in the data")
     #instruct_type = int(response)
-    # Print the assistant's response
-    #print("Bot: ", response)
+    print("Bot: ", response)
     return {"instruct_type" : instruct_type}
+        ''',
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "user_input" : "string",
+            "context" : "string"
+        },
+        "outputs": {
+            "instruct_type" : "num",
+        }
+    },
+    "generate_image_prompt" : {
+        "function_name": "generate_image_prompt",
+        "import_string" : None,
+        "function_string" : """
+async def generate_image_prompt(node, model=None, user_input=None, context=None, instruct_type=None):
+    app = MDApp.get_running_app()
+    print("Prompt")
+    user_text = user_input
+    if context:
+        context = "OCR output:\\n" + context
+        print("context: ", context)
+    generated_image_path = ""
+    # Continue the conversation            
+    response = app.continue_conversation(user_text=user_text, context=context)
+    print("output: ", response)
+    return {"output" : response, "generated_image_path" : generated_image_path}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
-            "input_text" : "string",
+            "model" : "string",
+            "user_input" : "string", 
+            "instruct_type" : "num",
+            "context" : "string",
         },
         "outputs": {
+            "output" : "string",
             "instruct_type" : "num",
         }
     },
@@ -2083,55 +2128,43 @@ async def get_instruct_type(node, input_text=None):
         "function_name": "prompt",
         "import_string" : None,
         "function_string" : """
-async def prompt(node, model=None, user_prompt=None, context=None):
+async def prompt(node, model=None, user_input=None, context=None, instruct_type=None):
     app = MDApp.get_running_app()
     print("Prompt")
-    print(model, user_prompt, context)
-    await asyncio.sleep(.25)
-    user_text = user_prompt
-    instruct_type = app.get_instruct_type(user_text)
-    if context:
-        context = "OCR output:\\n" + context
-        print("context: ", context)
-    generated_image_path = ""
-    if instruct_type == 1:
-        generated_image_path = app.generate_image_prompt(user_text)
-    if instruct_type == 2:
-        pass
+    print(model, user_input, context)
+    user_text = user_input
     # Continue the conversation            
-    response = app.continue_conversation(context=context)
+    response = app.continue_conversation(user_text=user_text, context=context)
     print("output: ", response)
-    return {"output" : response, "instruct_type" : instruct_type, "generated_image_path" : generated_image_path}
+    return {"output" : response}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
             "model" : "string",
-            "user_prompt" : "string", 
+            "user_input" : "string", 
+            "instruct_type" : "num",
             "context" : "string",
         },
         "outputs": {
             "output" : "string",
-            "instruct_type" : "num",
-            "generated_image_path" : "string",
         }
     },
     "image_to_text" : {
         "function_name": "image_to_text",
         "import_string" : None,
         "function_string" : """
-async def image_to_text(node, image_path=None):
-    if image_path:
+async def image_to_text(node, user_image=None):
+    if user_image:
         # Load the image using PIL
-        
-        image = Image.open(image_path)
-
+        print(user_image)
         # Convert the image to a format OpenCV can work with
-        image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        image = cv2.imread(user_image)
+        image_cv = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         # Use pytesseract to get detailed OCR results
-        detailed_data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-
+        detailed_data = pytesseract.image_to_data(image_cv, output_type=pytesseract.Output.DICT)
+        
         # Initialize variables to store sentence/paragraph bounding boxes and text
         boxes = []
         current_box = None
@@ -2144,7 +2177,7 @@ async def image_to_text(node, image_path=None):
             conf = int(detailed_data['conf'][i])
             
             # Only consider text elements with a confidence above a certain threshold
-            if conf > 40:
+            if conf > 20:
                 if current_box is None:
                     # Start a new bounding box and text group
                     current_box = (x, y, x + w, y + h)
@@ -2182,7 +2215,7 @@ async def image_to_text(node, image_path=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
-            "image_path" : "string",
+            "user_image" : "string",
         },
         "outputs": {
             "output_text" : "string",
@@ -2343,7 +2376,7 @@ async def decide_output_language(node, user_language=None, listener_language=Non
     
 }
 
-node_init = {}
+#node_init = {}
 
 def load_json_files_to_dict(directory):
     path = Path(directory)
@@ -2363,7 +2396,7 @@ def load_json_files_to_dict(directory):
 directory_path = "nodes"  # Directory containing the JSON files
 
 # Load JSON files into a dictionary
-node_init = load_json_files_to_dict(directory_path)
+#node_init = load_json_files_to_dict(directory_path)
 
 # Example usage
 output_directory_path = "nodes"
@@ -2732,7 +2765,7 @@ KV = '''
                         size: 50, 50
                         padding_x: 10
                         #pos: self.parent.center_x - self.width / 2, self.parent.center_y - self.height / 2  # Position the MDIconButton at the center of its parent
-                        on_release: app.button_pressed()  # Define the action to be taken when the button is released
+                        #on_release: app.button_pressed()  # Define the action to be taken when the button is released
                         Image:
                             source: "images/gemini_logo.png"
                             size_hint: None, None
@@ -3374,7 +3407,7 @@ class MapScreen(Screen):
             asyncio.set_event_loop(loop)
             loop.run_until_complete(self.on_run_press(node))
 
-        threading.Thread(target=run_coroutine_in_event_loop).start()  
+        threading.Thread(target=run_coroutine_in_event_loop).start()
         
     def back_button_on_press(self, instance):
         app = MDApp.get_running_app()
@@ -3958,7 +3991,8 @@ print(\"Added\", {function_name})
             try:
                 exec(node_init[i]["function_string"], globals())
                 exec(formatted_string, globals())
-            except:
+            except Exception as e:
+                print(e)
                 pass
             
         self.layout = BoxLayout(orientation='vertical')
@@ -4337,9 +4371,10 @@ class DraggableLabelApp(MDApp):
             print(f"User: {content}")
         
     # Function to continue the conversation
-    def continue_conversation(self, model=None, context=None):
+    def continue_conversation(self, model=None, user_text=None, context=None):
         #print(past_messages)
         # Create the chat completion request with updated past messages
+        self.add_message("user", user_text)
         if context:
             self.add_message("context", context)
         chat_completion = client.chat.completions.create(
