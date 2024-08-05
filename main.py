@@ -1710,7 +1710,6 @@ async def text_to_wav_instance(node, text):
         sound = SoundLoader.load(filename)
         node.args["sound"] = sound
         return {"speech_wav" : sound}
-
         """,
         "description" : None,
         "documentation" : None,
@@ -3183,7 +3182,7 @@ class DraggableMapScreen(FloatLayout):
                                         #lat_y, lon_x = self.web_mercator_to_degrees(x,y)
                                         
                                         #Plot path
-                                        circle_pos = self.add_circle(coords[0] - 0.00015, coords[1], 16, 3)
+                                        circle_pos = self.add_circle(coords[0], coords[1], 16, 3)
                                         lines_arr_points.append(circle_pos)
                                     except Exception as e:
                                         print(e)
@@ -3337,7 +3336,7 @@ class MapScreen(Screen):
         end_y = 5
         zoom = 16
         
-        x_tile_init, y_tile_init = lat_lon_to_tile_pixel(14.5746842,121.1154451, 16)
+        x_tile_init, y_tile_init = lat_lon_to_tile_pixel(48.8583, 2.2963, 16)
 
         for x in range(start_x, end_x):
             for y in range(start_y, end_y):
