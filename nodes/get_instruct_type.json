@@ -1,0 +1,13 @@
+{
+    "function_name": "get_instruct_type",
+    "import_string": null,
+    "function_string": "\nasync def get_instruct_type(node, input_text=None):\n    # Input text containing the Python code block\n    print(\"Running get instruct type\")\n    generate_code = f\"User Input: {input_text}\nInstruct Types:\n0: Normal, normal conversation\n1: Generate Image, if user wants to generate an image\n2: Search Facebook, if user wants to search Facebook.\n3: Search Google, If user wants to do Web Search or if you don't know the answer or wants updated answer.4: Search Google with Images, If user wants to search images of an object\n, output only the number of the instruct type, with format: \nFormat: instruct type:<number>\"\n    message_array = []\n    #message_array.append({\"role\": \"system\", \"content\": \"Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.\"})\n    message_array.append({\"role\": \"user\", \"content\": generate_code})\n    chat_completion = client.chat.completions.create(\n      messages=message_array,\n      model=\"mistralai/Mixtral-8x7B-Instruct-v0.1\"\n    )\n    \n    response = chat_completion.choices[0].message.content\n    print(response)\n    # Use regular expression to find the instruct_type number\n    pattern = re.compile(r'instruct type\\s*:\\s*(\\d+)')\n    # Convert the string to all lowercase\n    response = response.lower()\n    match = pattern.search(response)\n    instruct_type = None\n    if match:\n        instruct_type = int(match.group(1))\n        print(f'instruct_type number: {instruct_type}')\n    else:\n        print('instruct_type not found in the data')\n    #instruct_type = int(response)\n    # Print the assistant's response\n    #print(\"Bot: \", response)\n    return {\"instruct_type\" : instruct_type}\n        ",
+    "description": null,
+    "documentation": null,
+    "inputs": {
+        "input_text": "string"
+    },
+    "outputs": {
+        "instruct_type": "num"
+    }
+}
