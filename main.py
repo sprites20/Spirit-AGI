@@ -60,12 +60,13 @@ Node Optimizer
 from kivy.config import Config
 
 from kivy.lang import Builder
+
 from kivymd.app import MDApp
+
 from kivy.uix.behaviors import DragBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
-from kivymd.uix.button import MDIconButton
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
@@ -74,27 +75,44 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.popup import Popup
+from kivy.uix.image import Image
+from kivy.uix.togglebutton import ToggleButton
+
+from kivymd.uix.button import MDIconButton
+
 from kivy.resources import resource_find
 from kivy.graphics.transformation import Matrix
 from kivy.graphics.opengl import glEnable, glDisable, GL_DEPTH_TEST, glCullFace, GL_BACK
 from kivy.graphics import RenderContext, Callback, PushMatrix, PopMatrix, \
-    Color, Translate, Rotate, Mesh, UpdateNormalMatrix, BindTexture
+    Color, Translate, Rotate, Mesh, UpdateNormalMatrix, BindTexture, Rectangle, Ellipse, Line
 from kivy.uix.codeinput import CodeInput
 from kivy.properties import Property
 from objloader import ObjFile
 from tkinter import Tk, filedialog
-from kivy.graphics import Color, Rectangle, Ellipse, Line
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.properties import NumericProperty
 from kivy.core.audio import SoundLoader
 import pyttsx3
 
+from kivy.core.window import Window
+
+from kivy.app import App
+import math
+import os
+import requests
+import asyncio
+from functools import partial
+#from pyppeteer import launch
+import base64
+from geopy.geocoders import Nominatim
+
 import osmnx as ox
 import networkx as nx
 import matplotlib.pyplot as plt
 
 from pyproj import Proj, transform
+
 from pygments.lexers import PythonLexer
 
 from textblob import TextBlob
@@ -1041,12 +1059,14 @@ class TruncatedLabel(Label):
         else:
             # Text fits within the Label width
             self.text = self.text
+            
 def display_output_2(user_text):
     app = MDApp.get_running_app()
     print("App: ", app)
     instruct_type = app.get_instruct_type(user_text)
     if instruct_type == 1:
         app.generate_image_prompt(user_text)
+
     # Continue the conversation            
     response = app.continue_conversation()
     #bot_text = response
@@ -1108,6 +1128,10 @@ class DraggableLabel(DragBehavior, Label):
             self.output_labels = {}
             self.output_label_circles = {}
             
+            self.input_inputs = {}
+            
+            self.output_inputs = {}
+            
             self.line = None  # Initialize the line object
             self.line2 = None
             
@@ -1157,6 +1181,7 @@ class DraggableLabel(DragBehavior, Label):
                 ellipse = Ellipse(pos=ellipse_pos, size=(10, 10))
                 self.input_label_circles[i] = ellipse
                 count += 1
+            
                 
             count = 1
             for i in self.outputs:
@@ -1171,6 +1196,8 @@ class DraggableLabel(DragBehavior, Label):
                 ellipse = Ellipse(pos=ellipse_pos, size=(10, 10))
                 self.output_label_circles[i] = ellipse
                 count += 1
+            
+            
                 
         self.update_rect()
 
@@ -1186,6 +1213,7 @@ class DraggableLabel(DragBehavior, Label):
         # Update the positions of the input and output circles
         self.input_circle_pos = (self.offsetted_pos[0] - 3, self.offsetted_pos[1] + self.height / 2 - 5)
         self.output_circle_pos = (self.right - 7, self.offsetted_pos[1] + self.height / 2 - 5)
+        
         self.input_circle.pos = self.input_circle_pos
         self.output_circle.pos = self.output_circle_pos
         
@@ -1203,11 +1231,15 @@ class DraggableLabel(DragBehavior, Label):
         if self.line2:
             self.line2.points = [self.output_circle_pos[0] + 5, self.output_circle_pos[1] + 5,
                                 self.connection[0], self.connection[1]]
+        
+        
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
             if self.to_be_deleted:
+                #Use del
                 #Delete all lines from detected connections from connections
+                
                 #Delete thing in canvas
                 #Delete trigger_outs by finding in node_info that has that trigger_out
                 #Delete node_info
@@ -1857,7 +1889,7 @@ async def display_output(node, user_input, output, instruct_type, generated_imag
         if instruct_type == 1:
             #image_components.append(CustomImageComponent(img_source=generated_image_path))
             grid_layout.add_widget(CustomImageComponent(img_source=generated_image_path))
-
+        
     # Schedule the update_ui function to run on the main thread
     Clock.schedule_once(update_ui)
         """,
@@ -2002,6 +2034,49 @@ async def is_equal(node, A=None, B=None):
         },
         "outputs": {
             "is_equal" : "bool"
+        }
+    },
+    "get_instruct_type" : {
+        "function_name": "get_instruct_type",
+        "import_string" : None,
+        "function_string" : """
+async def get_instruct_type(node, input_text=None):
+    # Input text containing the Python code block
+    
+    generate_code = f"User Input: {input_text}\nInstruct Types:\n0: Normal, normal conversation\n1: Generate Image, if user wants to generate an image\n2: Search Facebook, if user wants to search Facebook.\n3: Search Google, If user wants to do Web Search or if you don't know the answer or wants updated answer.4: Search Google with Images, If user wants to search images of an object\n, output only the number of the instruct type, with format: \nFormat: instruct type:<number>"
+    message_array = []
+    #message_array.append({"role": "system", "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."})
+    message_array.append({"role": "user", "content": generate_code})
+    chat_completion = client.chat.completions.create(
+      messages=message_array,
+      model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+    )
+    
+    response = chat_completion.choices[0].message.content
+    print(response)
+    # Use regular expression to find the instruct_type number
+    pattern = re.compile(r'instruct type\s*:\s*(\d+)')
+    # Convert the string to all lowercase
+    response = response.lower()
+    match = pattern.search(response)
+    instruct_type = None
+    if match:
+        instruct_type = int(match.group(1))
+        print(f'instruct_type number: {instruct_type}')
+    else:
+        print('instruct_type not found in the data')
+    #instruct_type = int(response)
+    # Print the assistant's response
+    #print("Bot: ", response)
+    return {"instruct_type" : instruct_type}
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "input_text" : "string",
+        },
+        "outputs": {
+            "instruct_type" : "num",
         }
     },
     "prompt" : {
@@ -2482,6 +2557,9 @@ KV = '''
     
 <RenderScreen>
     name: 'render_screen'
+
+<MapScreen>
+    name: 'map_screen'
     
 <NewNodeScreen>
     name: 'new_node_screen'
@@ -2491,6 +2569,9 @@ KV = '''
 
 <WidgetTreeScreen>
     name: 'widget_tree_screen'
+
+<SelectAppScreen>
+    name: 'select_app_screen'
 <CustomComponent>:
     background_color: (0.5, 0.5, 0.5, 1)
     orientation: 'horizontal'
@@ -2715,9 +2796,591 @@ ScreenManager:
     RenderScreen:
     NewNodeScreen:
     WidgetTreeScreen:
-    
+    SelectAppScreen:
+    MapScreen:
 '''
 
+import math
+import os
+import requests
+import asyncio
+from functools import partial
+#from pyppeteer import launch
+import base64
+from geopy.geocoders import Nominatim
+
+import osmnx as ox
+import networkx as nx
+import matplotlib.pyplot as plt
+
+from pyproj import Proj, transform
+
+# Initialize the Nominatim geolocator with a custom user agent
+geolocator = Nominatim(user_agent="my_app")
+
+# Initialize global offset by the center of the screen
+global_offset = [0,0]
+# Dictionary to store images
+images_dict = {}
+
+class CircleWidget(Widget):
+    def __init__(self, latitude, longitude, radius_pixels, zoom, mode, **kwargs):
+        super(CircleWidget, self).__init__(**kwargs)
+        self.latitude = latitude
+        self.longitude = longitude
+        self.radius_pixels = radius_pixels
+        self.zoom = zoom
+        self.mode = mode
+        self.draw_circle()
+ 
+    def draw_circle(self):
+        with self.canvas:
+            if self.mode == 0:
+                Color(1, 0, 0, 1)  # Red color with 100% opacity
+            elif self.mode == 1:
+                Color(0, 0, 1, 1)
+                self.radius_pixels = 3
+            elif self.mode == 2:
+                Color(0, 1, 0, 1)
+                self.radius_pixels = 4
+            elif self.mode == 3:
+                Color(1, 0, 0, 1)
+                self.radius_pixels = 3
+                self.latitude -= .00035
+            # Convert latitude and longitude to tile pixel coordinates
+            x_tile, y_tile, x_pixel, y_pixel = lat_lon_to_tile_pixel_with_pixel(self.latitude, self.longitude, self.zoom)
+            # Draw the circle as an ellipse
+            print(x_tile, y_tile, x_pixel, y_pixel)
+            circle_x, circle_y = images_dict[(self.zoom, x_tile, y_tile)].global_x + x_pixel + Window.width / 2 - self.radius_pixels + global_offset[0], images_dict[(self.zoom, x_tile, y_tile)].global_y - y_pixel + Window.height / 2 - self.radius_pixels + global_offset[1]
+            self.circle_ellipse = Ellipse(pos=(circle_x, circle_y),
+                    size=(self.radius_pixels * 2, self.radius_pixels * 2))
+            
+            print("Drawn Circle at", circle_x, circle_y)
+    def get_pos(self):
+        return self.circle_ellipse.pos
+    def update_position(self, dx, dy):
+        #print("Updated")
+        self.circle_ellipse.pos = (self.circle_ellipse.pos[0] + dx, self.circle_ellipse.pos[1] + dy)
+
+class PathLine(Widget):
+    def __init__(self, point1, point2, **kwargs):
+        super(PathLine, self).__init__(**kwargs)
+        self.point1 = point1
+        self.point2 = point2
+        self.line = None
+        self.draw_line()
+
+    def draw_line(self):
+        with self.canvas:
+            Color(1, 0, 0, 1)  # Red color with 100% opacity
+            points = [self.point1[0] + 3, self.point1[1] + 3, self.point2[0] + 3, self.point2[1] + 3]
+            self.line = Line(points=points, width=2)
+
+    def update_position(self, dx, dy):
+        if self.line:
+            # Update each point of the line by dx and dy
+            new_points = [
+                self.line.points[0] + dx, self.line.points[1] + dy,  # Update first point
+                self.line.points[2] + dx, self.line.points[3] + dy   # Update second point
+            ]
+            self.line.points = new_points
+
+from kivy.uix.image import Image
+     
+class DraggableImage(Image):
+    def __init__(self, offset_x=0, offset_y=0, zoom=None, x_tile=None, y_tile=None, **kwargs):
+        # Ensure to pass all the keyword arguments to the Image base class
+        super(DraggableImage, self).__init__(**kwargs)
+        self.dragging = True
+        self.offset_x = offset_x
+        self.offset_y = offset_y
+        self.zoom = zoom
+        self.x_tile = x_tile
+        self.y_tile = y_tile
+        self.update_position()
+        self.dx = 0
+        self.dy = 0
+        self.init_x = self.x
+        self.init_y = self.y
+        self.global_x = self.x
+        self.global_y = self.y
+        
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            # Convert touch position to image coordinates
+            
+            image_x = touch.pos[0] - self.pos[0]
+            image_y = touch.pos[1] - self.pos[1]
+            #print(f"Clicked inside the image at: ({image_x}, {image_y})", self.x_tile, self.y_tile)
+            #print(f"Clicked at: ({image_x}, {image_y})")
+            latitude, longitude = tile_pixel_to_lat_lon(self.zoom, self.x_tile, self.y_tile, image_x, image_y)
+            #print(f"Coords: {latitude}, {longitude}")
+            self.dragging = True
+            self.touch_offset = (self.x - touch.x, self.y - touch.y)
+            self.dx = 0
+            self.dy = 0
+            touch.grab(self)  # Grab the touch event for this widget
+            #print(self.x/256)
+            return True
+        return super(DraggableImage, self).on_touch_down(touch)
+        
+    def on_touch_move(self, touch):
+        if self.dragging:
+            # Calculate the movement distance
+            self.dx = touch.dx
+            self.dy = touch.dy
+            #print(f"Moved: ({self.dx}, {self.dy})")
+            
+            # Convert touch position to image coordinates
+            image_x = touch.pos[0] - self.pos[0]
+            image_y = touch.pos[1] - self.pos[1]
+            #latitude, longitude = tile_pixel_to_lat_lon(self.zoom, self.x_tile, self.y_tile, image_x, image_y)
+            #print("Tile:", lat_lon_to_tile_pixel(latitude, longitude, self.zoom))
+            #print(f"Latitude: {latitude}, Longitude: {longitude}")
+            #print(f"Tile offset: x: {self.dx//256}, y: {self.dy//256}")
+            
+            # Move all tiles in the parent DraggableMapScreen
+            """
+            for tile in draggable_map.tiles:
+                tile.x += dx
+                tile.y += dy
+                tile.dragging = False
+            self.dragging = True
+            """
+            return True
+        return super(DraggableImage, self).on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self.dragging and touch.grab_current == self:
+            #self.dragging = False
+            #print(f"Image Position: zoom = {self.zoom}, x={self.x}, y={self.y}, offset_x={self.offset_x}, offset_y={self.offset_y}")
+            #print(self.zoom)
+            #self.update_position()  # Update position after releasing
+            pass
+        return super(DraggableImage, self).on_touch_up(touch)
+
+    def update_position(self):
+        # This method updates the image position including the offset.
+        self.pos = (self.x + self.offset_x, self.y + self.offset_y)
+        print(f"Image Position: zoom = {self.zoom}, x={self.x}, y={self.y}, offset_x={self.offset_x}, offset_y={self.offset_y}")
+
+
+class DraggableMapScreen(FloatLayout):
+    def __init__(self, **kwargs):
+        super(DraggableMapScreen, self).__init__(**kwargs)
+        self.touch_x = 0
+        self.touch_y = 0
+        self.tiles = []
+        self.circles = []  # Keep track of circle widgets
+        self.path_lines = []
+        
+        self.reverse_geocoding = False
+        
+    def add_circle(self, latitude, longitude, zoom, mode):
+        circle_widget = CircleWidget(latitude, longitude, 5, zoom, mode)
+        self.add_widget(circle_widget, index=0)
+        self.circles.append(circle_widget)  # Add to the list of circles
+        print("Added Circle")
+        return circle_widget.get_pos()
+        
+    def add_path_line(self, point1, point2):
+        path_line_widget = PathLine(point1, point2)
+        self.add_widget(path_line_widget)
+        self.path_lines.append(path_line_widget)
+    
+    def update_path_line_positions(self, dx, dy):
+        for line in self.path_lines:
+            line.update_position(dx, dy)
+    def update_circle_positions(self, dx, dy):
+        for circle in self.circles:
+            circle.update_position(dx, dy)
+            
+    # Function to perform reverse geocoding
+    def reverse_geocode(self, latitude, longitude):
+        location = geolocator.reverse((latitude, longitude))
+        return location.address if location else None
+    
+    def haversine_distance(self, lat1, lon1, lat2, lon2):
+        R = 6371  # Earth radius in kilometers
+
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        distance = R * c
+
+        return distance
+
+    def query_osm_places_within_radius(self, latitude, longitude, radius, tags=None):
+        overpass_url = "http://overpass-api.de/api/interpreter"
+        query = f"""
+           [out:json];
+           (
+               node{";".join([f'["{k}"="{v}"]' for k, v in tags.items()])}(around:{radius},{latitude},{longitude});
+               way{";".join([f'["{k}"="{v}"]' for k, v in tags.items()])}(around:{radius},{latitude},{longitude});
+               relation{";".join([f'["{k}"="{v}"]' for k, v in tags.items()])}(around:{radius},{latitude},{longitude});
+           );
+           out body;
+           >;
+           out skel qt;
+        """
+
+        response = requests.get(overpass_url, params={"data": query})
+        return response.json()
+    def get_route_coords(self, origin, destination):
+        # Define the bounding box or the center and distance to get the street network
+        location_point = origin  # Example location point
+        G = ox.graph_from_point(location_point, dist=1000, network_type='drive')
+
+        
+        # Find the nearest nodes to the origin and destination points
+        origin_node = ox.distance.nearest_nodes(G, origin[1], origin[0])
+        destination_node = ox.distance.nearest_nodes(G, destination[1], destination[0])
+
+        # Find the shortest path between the nodes
+        route = nx.shortest_path(G, origin_node, destination_node, weight='length')
+        print("Found path")
+
+        # Extract the coordinate sequence for the path
+        route_nodes = [G.nodes[node] for node in route]
+        route_coords = [(node['y'], node['x']) for node in route_nodes]
+
+        # Print the coordinate sequence
+        print("Route coordinates:")
+        for coord in route_coords:
+            print(coord)
+        return route_coords, G, route
+    def wgs84_to_web_mercator(self, lat, lon):
+        # Ensure latitude is within the valid range
+        lat = max(min(lat, 89.99999), -89.99999)
+        
+        # Convert latitude and longitude to radians
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        
+        # Earth's radius in meters
+        R = 6378137.0
+        
+        # Calculate the Web Mercator x and y coordinates
+        x = lon_rad * R
+        y = math.log(math.tan(math.pi / 4 + lat_rad / 2)) * R
+        
+        return x, y  # Return longitude (x) and latitude (y)
+    
+    def web_mercator_to_degrees(self, x, y):
+        # Earth's radius in meters
+        R = 6378137.0
+
+        # Convert x and y from meters to radians
+        lon = math.degrees(x / R)
+        lat = math.degrees(math.atan(math.sinh(y / R))) - .001
+
+        return lat, lon  # Return latitude and longitude in degrees
+    def on_touch_down(self, touch):
+        global global_offset
+        for child in self.children:
+            if isinstance(child, DraggableImage):
+                # Calculate the global position of the touch
+                global_pos_x = touch.pos[0] - global_offset[0] - Window.width / 2
+                global_pos_y = touch.pos[1] - global_offset[1] - Window.height / 2
+                
+                # Calculate the relative position of the touch inside the child
+                touch_x_rel = global_pos_x - child.global_x
+                touch_y_rel = global_pos_y - child.global_y
+                
+                # Check if the touch collides with the child
+                if -256/2 <= touch_x_rel < 256/2 and -256/2 <= touch_y_rel < 256/2:
+                    print("Clicked on child:", child)
+                    print("Child Pos:", child.global_x, child.global_y)
+                    print("Relative Touch Pos:", touch_x_rel, touch_y_rel)
+                    print("Tile: ", child.x_tile, child.y_tile)
+                    
+                    # Convert relative touch coordinates to pixel coordinates within the tile
+                    pixel_x = (touch_x_rel + 256 / 2)
+                    pixel_y = (256 / 2 - touch_y_rel)
+                    
+                    # Convert tile coordinates to latitude and longitude
+                    latitude, longitude = tile_pixel_to_lat_lon(child.zoom, child.x_tile, child.y_tile, pixel_x, pixel_y)
+                    
+                    print(f"Coordinates: {latitude}, {longitude}")
+                    
+                    # Perform reverse geocoding
+                    if self.reverse_geocoding:
+                        address = self.reverse_geocode(latitude, longitude)
+                        #'amenity': 'hospital'
+                        tags = {"amenity": "hospital"}
+                        #tags = {"tourism": "hotel"}  # Example tags
+                        places = self.query_osm_places_within_radius(latitude, longitude, 1000, tags)
+                        #self.show_places_on_map(draggable_map, places)
+                        for element in places["elements"]:
+                            tags = element.get("tags", {})
+                            name = tags.get("name", "Unnamed")
+                            street = tags.get("addr:street", "")
+                            lat = element.get("lat", "Unknown")
+                            lon = element.get("lon", "Unknown")
+                            print(f"{name} ({lat}, {lon}) - {street}")
+                            
+                            try:
+                                self.add_circle(lat, lon, 16, 1)
+                                
+                            except:
+                                pass
+                        
+                        # Filter out elements without 'lat' and 'lon' keys
+                        valid_places = [p for p in places["elements"] if 'lat' in p and 'lon' in p]
+
+                        if valid_places:
+                            nearest_place = min(valid_places, key=lambda p: self.haversine_distance(latitude, longitude, p["lat"], p["lon"]))
+                            tags = nearest_place.get("tags", {})
+                            name = tags.get("name", "Unnamed")
+                            street = tags.get("addr:street", "")
+                            lat = nearest_place.get("lat", "Unknown")
+                            lon = nearest_place.get("lon", "Unknown")
+                            print(f"Nearest Place: {name} ({lat}, {lon}) - {street}")
+                            
+                            lines_arr_points = []
+                            try:
+                                self.add_circle(lat, lon, 16, 2)  # Add a circle at the nearest place location
+                                route_coords, G, route = self.get_route_coords((latitude, longitude), (lat,lon))
+                                # Define the projection from WGS 84 to Web Mercator (EPSG:3857)
+
+                                for coords in route_coords:
+                                    try:
+                                        #x, y = self.wgs84_to_web_mercator(coords[0], coords[1])
+                                        #lat_y, lon_x = self.web_mercator_to_degrees(x,y)
+                                        
+                                        #Plot path
+                                        circle_pos = self.add_circle(coords[0] - 0.00015, coords[1], 16, 3)
+                                        lines_arr_points.append(circle_pos)
+                                    except Exception as e:
+                                        print(e)
+                                la_len = len(lines_arr_points)
+                                for i in range(1,la_len):
+                                    self.add_path_line(lines_arr_points[i-1], lines_arr_points[i])
+                            except Exception as e:
+                                print(f"Error adding circle: {e}")
+
+                        print(f"Address: {address}")
+
+                        
+                        self.add_circle(latitude, longitude, 16, 0)
+                        
+                        return child
+                        
+                        
+
+        print("Global Pos: ", global_pos_x, global_pos_y, "\n")
+        return super().on_touch_down(touch)
+    def on_touch_move(self, touch):
+        global global_offset
+        global_offset[0] += touch.dx
+        global_offset[1] += touch.dy
+        
+        for child in self.children:
+            if isinstance(child, DraggableImage):
+                child.x += touch.dx
+                child.y += touch.dy
+                
+                #child.global_x = child.init_x + global_offset[0]
+                #child.global_y = child.init_y - global_offset[1]
+        self.update_circle_positions(touch.dx, touch.dy)  # Update circle positions
+        self.update_path_line_positions(touch.dx, touch.dy)
+        return super().on_touch_move(touch)
+        
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            return True
+        return super().on_touch_up(touch)
+
+    def add_tile(self, tile):
+        self.add_widget(tile)
+        self.tiles.append(tile)
+
+    def remove_tile(self, tile):
+        self.remove_widget(tile)
+        self.tiles.remove(tile)
+
+def download_tile_image(zoom, xtile, ytile, folder="tiles"):
+    url = f"https://tile.openstreetmap.org/{zoom}/{xtile}/{ytile}.png"
+    filename = f"{folder}/{zoom}/{xtile}/{ytile}.png"
+    
+    # Check if the file already exists
+    if os.path.exists(filename):
+        print(f"Tile image already exists: {filename}")
+        return filename
+    
+    # Create the directory if it doesn't exist
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    
+    # Define the custom user agent
+    headers = {
+        'User-Agent': 'my_app/1.0'  # Replace with your custom user agent
+    }
+    
+    # Download the image with the custom user agent
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        with open(filename, 'wb') as file:
+            file.write(response.content)
+        print(f"Tile image saved as: {filename}")
+        return filename
+    elif response.status_code == 418:
+        print(f"Failed to download tile image: HTTP 418 - I'm a teapot")
+    else:
+        print(f"Failed to download tile image: HTTP {response.status_code} - {response.reason}")
+    return filename
+
+def tile_pixel_to_lat_lon(zoom, x_tile, y_tile, x_pixel, y_pixel):
+    # Number of tiles at this zoom level
+    n = 2.0 ** zoom
+    
+    # Normalized device coordinates
+    x_n = (x_tile + (x_pixel / 256.0)) / n
+    y_n = (y_tile + (y_pixel / 256.0)) / n
+    
+    # Longitude
+    longitude = (x_n * 360.0) - 180.0
+    
+    # Latitude
+    lat_rad = math.atan(math.sinh(math.pi * (1 - (2 * y_n))))
+    latitude = math.degrees(lat_rad)
+    
+    return latitude, longitude
+    
+def lat_lon_to_tile_pixel(latitude, longitude, zoom):
+    n = 2.0 ** zoom
+    x_tile = int((longitude + 180.0) / 360.0 * n)
+    lat_rad = math.radians(latitude)
+    y_tile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
+    return x_tile, y_tile
+
+
+def lat_lon_to_tile_pixel_with_pixel(latitude, longitude, zoom):
+    # Calculate the number of tiles at the given zoom level
+    n = 2.0 ** zoom
+    
+    # Calculate the tile coordinates
+    x_tile = (longitude + 180.0) / 360.0 * n
+    lat_rad = math.radians(latitude)
+    y_tile = (1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n
+    
+    # Calculate the pixel coordinates within the tile
+    x_pixel = (x_tile - int(x_tile)) * 256
+    y_pixel = (y_tile - int(y_tile)) * 256
+    
+    # Convert tile coordinates to integers
+    x_tile = int(x_tile)
+    y_tile = int(y_tile)
+    
+    # Adjust pixel coordinates to be relative to the center of the tile
+    x_pixel_centered = x_pixel - 128  # Assuming the tile size is 256
+    y_pixel_centered = y_pixel - 128  # Assuming the tile size is 256
+    
+    return x_tile, y_tile, x_pixel_centered, y_pixel_centered
+
+"""
+# Define a wrapper function to run async functions from sync context
+def async_wrapper(f, *args, **kwargs):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(f(*args, **kwargs))
+"""
+class MapScreen(Screen):
+    def __init__(self, **kwargs):
+        super(MapScreen, self).__init__(**kwargs)
+        # Create a FloatLayout to allow overlapping widgets
+        self.float_layout = FloatLayout()
+
+        # Declare map layout
+        self.map_layout = BoxLayout(orientation='vertical', size_hint=(1, 1))
+        self.draggable_map = DraggableMapScreen()
+        self.map_layout.add_widget(self.draggable_map)
+
+        
+        # Define the range of tiles you want to load
+        start_x = -5
+        end_x = 5
+        start_y = -5
+        end_y = 5
+        zoom = 16
+        
+        x_tile_init, y_tile_init = lat_lon_to_tile_pixel(14.5746842,121.1154451, 16)
+
+        for x in range(start_x, end_x):
+            for y in range(start_y, end_y):
+                x_tile, y_tile = (x_tile_init + x, y_tile_init + y)  # Adjust the starting tile numbers
+                offset_x, offset_y = (x * 256, -y * 256)
+                filename = download_tile_image(zoom, x_tile, y_tile)
+                if filename:
+                    new_image = DraggableImage(
+                        source=filename, size=(256, 256), zoom=zoom, x_tile=x_tile, y_tile=y_tile,
+                        allow_stretch=False, offset_x=offset_x, offset_y=offset_y
+                    )
+                    self.draggable_map.add_tile(new_image)
+                    images_dict[(zoom, x_tile, y_tile)] = new_image
+        
+        # Toggle button for reverse geocoding
+        toggle_button = ToggleButton(text='Reverse Geocoding Off', size_hint=(1, None), height=50)
+        toggle_button.bind(on_press=lambda instance: self.toggle_reverse_geocoding(instance, self.draggable_map))
+        self.map_layout.add_widget(toggle_button)
+
+        # Add map_layout to float_layout
+        self.float_layout.add_widget(self.map_layout)
+
+        # Declare top layout and back button
+        self.top_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=40, pos_hint={'top': 1})
+        self.back_button = Button(text='Back', size_hint_x=None, width=100)
+        self.back_button.bind(on_press=self.back_button_on_press)
+        self.top_layout.add_widget(self.back_button)
+
+        # Add top_layout to float_layout, it will be on top due to z-ordering
+        self.float_layout.add_widget(self.top_layout)
+
+        # Add float_layout to the screen
+        self.add_widget(self.float_layout)
+    
+    def toggle_reverse_geocoding(self, instance, draggable_map):
+        if instance.state == 'down':
+            instance.text = 'Reverse Geocoding On: Searching Hospitals'
+            draggable_map.reverse_geocoding = True
+            instance.background_color = (0, 1, 0, 1)  # Green color
+        else:
+            instance.text = 'Reverse Geocoding Off'
+            draggable_map.reverse_geocoding = False
+            instance.background_color = (1, 0, 0, 1)  # Red color
+            
+    async def on_run_press(self, node):
+        #print("Run Pressed")
+        # Search for ignition nodes and trigger them once.
+        tasks = []
+        print("Running: ", node)
+        for i in node_info:
+            if node_info[i]["name"] == node:
+                #print(i, async_nodes[i])
+                try:
+                    # Your existing code here...
+                    print("someasync: ", async_nodes[i].trigger_out, i)
+                    tasks.append(asyncio.create_task(async_nodes[i].trigger()))
+                    
+                    # Your existing code here...
+                except RecursionError:
+                    print("Maximum recursion depth reached. Stopping program.")
+                    # Additional cleanup or handling here if needed
+        await asyncio.gather(*tasks)
+        
+    def on_run_press_wrapper(self, instance, node):
+        def run_coroutine_in_event_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.on_run_press(node))
+
+        threading.Thread(target=run_coroutine_in_event_loop).start()  
+        
+    def back_button_on_press(self, instance):
+        app = MDApp.get_running_app()
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+        
 class CustomComponent(BoxLayout):
     pass
 
@@ -2743,6 +3406,7 @@ class NewNodeComponent(BoxLayout):
         self.add_widget(self.label)
         self.add_widget(self.button_box)
 
+
     def button_on_press(self, instance):
         try:
             print(self.text)
@@ -2753,6 +3417,133 @@ class NewNodeComponent(BoxLayout):
 
         except Exception as e:
             print(e)
+
+class NewAppComponent(BoxLayout):
+    def __init__(self, text, **kwargs):
+        super(NewAppComponent, self).__init__(orientation='horizontal', **kwargs)
+        self.text = text
+        
+        self.label = Label(text=text, size_hint_x=0.7, halign='left', valign='middle')
+        self.label.bind(size=self.label.setter('text_size'))  # Ensure the text size matches the label size
+        
+        self.button_box = BoxLayout(size_hint_x=0.3, orientation="horizontal")
+        
+        self.add_button = Button(text="Select")
+        self.add_button.bind(on_press=self.button_on_press)
+        
+        self.button_box.add_widget(self.add_button)
+        self.add_widget(self.label)
+        self.add_widget(self.button_box)
+
+
+    def button_on_press(self, instance):
+        try:
+            print(self.text)
+            app = MDApp.get_running_app()
+            app.root.current = apps[self.text]
+            #app.manager.transition = NoTransition()
+            #app.root.current = "draggable_label_screen"
+
+        except Exception as e:
+            print(e)
+
+apps = {
+    "Chatbot" : 'chatbox',
+    "Renderer" : 'render_screen',
+    "Map" : 'map_screen',
+}
+class SelectAppScreen(Screen):
+    def __init__(self, **kwargs):
+        super(SelectAppScreen, self).__init__(**kwargs)
+        
+        # Create the main layout for the screen
+        screen_layout = BoxLayout(orientation='vertical')
+        
+        # Create the back button layout
+        back_box = BoxLayout(size_hint=(1, None), height=40)
+        
+        back_button = Button(text="Back")
+        back_button.bind(on_press=self.back_button_on_press)
+        
+        refresh_button = Button(text="Refresh")
+        refresh_button.bind(on_press=self.refresh_components)
+        back_box.add_widget(back_button)
+        back_box.add_widget(refresh_button)
+        
+        search_box = BoxLayout(size_hint=(1, None), height=40)
+        
+        self.search_input = TextInput(size_hint_x = .75, multiline=False)
+        search_button = Button(text="Search", size_hint_x = .25)
+        search_box.add_widget(self.search_input)
+        search_box.add_widget(search_button)
+        # Create the main scroll view
+        main_scroll = ScrollView(size_hint=(1, 1))
+        
+        # Create the main layout inside the scroll view
+        self.main_layout = BoxLayout(orientation='vertical', size_hint_y=None)
+        self.main_layout.bind(minimum_height=self.main_layout.setter('height'))
+        
+        self.add_custom_components()
+        
+        # Add the main layout to the scroll view
+        main_scroll.add_widget(self.main_layout)
+        
+        # Add the back button and scroll view to the screen layout
+        screen_layout.add_widget(back_box)
+        screen_layout.add_widget(search_box)
+        screen_layout.add_widget(main_scroll)
+        
+        # Add the screen layout to the screen
+        self.add_widget(screen_layout)
+        
+        #self.clear_custom_components()
+    def search_nodes(self, instance):
+        for i in node_init:
+            pass
+            
+    def refresh_components(self, instance):
+        self.clear_custom_components()
+        self.add_custom_components()
+        
+    def clear_custom_components(self):
+        # Clear all children from the main layout
+        print("Cleared!")
+        self.main_layout.clear_widgets()
+        
+    def add_custom_components(self):
+        # Add custom components to the main layout
+        print("Added!")
+        for i in apps:  # Adding multiple custom components
+            print(i)
+            custom_component = NewAppComponent(text=f"{i}")
+            custom_component.size_hint_y = None
+            custom_component.height = 50
+            self.main_layout.add_widget(custom_component)
+    def back_button_on_press(self, instance):
+        app = MDApp.get_running_app()
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+
+'''
+Apps List
+apps = {
+    "Chatbot" : #name of the screen
+    "Renderer" : #name of the screen
+    "Map" : #name of the screen
+}
+
+Agents List
+agent_screens = {
+    #Agent name
+    #Agent screen name
+    
+    #Send to agent node
+    #Recieve from Agent node
+    
+    #Then like each agent can send inputs to other agents
+    #Example agent can choose which to run. Like an instruct type, the agent function, and the inputs.
+}
+'''
 
 class SelectNodeScreen(Screen):
     def __init__(self, **kwargs):
@@ -3206,15 +3997,29 @@ print(\"Added\", {function_name})
         root.add_widget(self.layout)
         
         # Floating layout
-        top_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40, pos_hint={'top': 1})
-        back_button = Button(text='Chatbot')
-        top_layout.add_widget(back_button)
+        top_layout = BoxLayout(orientation='vertical', size_hint=(1, None), height=80, pos_hint={'top' : 1})
+        
+        apps_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        agents_layout = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        
+        agent_button = Button(text='Agents')
+        apps_button = Button(text='Apps', on_press=self.switch_to_apps)
+        
+        agents_layout.add_widget(agent_button)
+        apps_layout.add_widget(apps_button)
+        
+        chatbot_button = Button(text='Chatbot')
+        apps_layout.add_widget(chatbot_button)
+        
         render_button = Button(text='Renderer', on_press=self.switch_to_renderer)
-        top_layout.add_widget(render_button)
+        apps_layout.add_widget(render_button)
         # Bind button press to switch_to_screen method
-        back_button.bind(on_press=self.switch_to_screen)
+        chatbot_button.bind(on_press=self.switch_to_screen)
         
         root.add_widget(top_layout)
+        
+        top_layout.add_widget(apps_layout)
+        top_layout.add_widget(agents_layout)
         # Floating layout
         floating_layout = BoxLayout(orientation='horizontal', size_hint=(1, .05), pos=(0, 0))
         
@@ -3269,8 +4074,9 @@ print(\"Added\", {function_name})
             tree['children'].append(self.generate_widget_tree(child, level + 1))
 
         return tree
-
-
+    
+    
+    
     def print_widget_tree(self, tree, level=0):
         indent = '  ' * level
         print(f"{indent}{tree['widget']['name']}")
@@ -3482,6 +4288,10 @@ print(\"Added\", {function_name})
         # Switch to 'chatbox'
         self.manager.transition = NoTransition()
         self.manager.current = 'render_screen'
+    
+    def switch_to_apps(self, instance):
+        self.manager.transition = NoTransition()
+        self.manager.current = 'select_app_screen'
 class DraggableLabelApp(MDApp):
     past_messages = []
     def build(self):
