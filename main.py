@@ -148,6 +148,8 @@ import threading
 import copy
 from pathlib import Path
 
+from pyppeteer import launch
+from urllib.parse import quote
 
 import pytesseract
 import cv2
@@ -158,6 +160,11 @@ from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
 
 import cohere
+
+import nest_asyncio
+
+
+nest_asyncio.apply()  # Apply the nest_asyncio patch
 
 #Retrieve Code Documentation
 API_KEY = "BXyTrgsV2PMbRuvDYu9ZwfLHObeTkR4SvPoZAvtf"
@@ -782,7 +789,10 @@ class AsyncNode:
             # Pass input_args and self to the function
             # Schedule UI update in the main Kivy thread
             Clock.schedule_once(lambda dt: self.change_to_red(), 0)
-            output_args = await function_to_call(self, **input_args)
+            # Use asyncio.create_task() to avoid conflicts
+            task = asyncio.create_task(function_to_call(self, **input_args))
+            
+            output_args = await task
             Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
             #print("Output args: ", output_args)
             
@@ -1772,6 +1782,170 @@ async def stop_audio_tts(node, sound):
         "outputs": {
         }
     },
+    "search_facebook" : {
+        "function_name": "search_facebook",
+        "import_string" : None,
+        "function_string" : """
+# Define a wrapper function to run async functions from sync context
+def async_wrapper_2(f, *args, **kwargs):
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(f(*args, **kwargs))
+    
+async def launch_browser():
+    return await launch(headless=True, userDataDir='./userdata')
+
+browser = async_wrapper_2(launch_browser)
+
+async def get_href(browser, query):
+    async def goto_more(page):
+        # Wait for the element with both classes "bi" and "bj" to be available
+        await page.waitForSelector('.bi.bj')
+
+        # Get the href attribute of the element
+        href = await page.evaluate('''() => {
+            const element = document.querySelector('.bi.bj a');
+            return element ? element.getAttribute('href') : null;
+        }''')
+        
+        await asyncio.sleep(0.5)
+        print('href:', href)
+        return href
+
+    async def extract_text(page):
+        # Wait for all elements with class "z.ba" to be available
+        await page.waitForSelector('.z.ba')
+
+        # Wait for all elements with class "be.bf" to be available
+        await page.waitForSelector('.be.bf')
+
+        # Extract text from all matching elements
+        texts = await page.evaluate('''() => {
+            const elements = document.querySelectorAll('.z.ba');
+            const timestamps = document.querySelectorAll('.be.bf');
+            return Array.from(elements).map((element, index) => {
+                const text = element.textContent.trim() + '\\n';
+                const timestamp = timestamps[index].textContent.trim();
+                return { text};
+            });
+        }''')
+        
+        pattern = r'\\d+\\s*(?:hrs|min|hr)s?'
+
+        
+        for text in texts:
+            print('Text:', text['text'])
+            times = re.findall(pattern, text['text'])
+
+            print(times)
+
+            
+            #print('Timestamp:', text['timestamp'])
+    
+    async def extract_text_2(page):
+        # Wait for all elements with class "ca.cb" to be available
+        await page.waitForSelector('.ca.cb')
+
+        # Extract text from all matching elements
+        texts = await page.evaluate('''() => {
+            const elements = document.querySelectorAll('.ca.cb');
+            return Array.from(elements).map(element => element.textContent.trim());
+        }''')
+        date_pattern = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2}\\s+at\\s+\\d{1,2}:\\d{2}\\s+[AP]M'
+        duration_pattern = r'\\d+\\s*(?:hrs|min|hr)s?'
+        for text in texts:
+            print(text, '\\n')
+            
+
+            dates = re.findall(date_pattern, text)
+            durations = re.findall(duration_pattern, text)
+            if dates:
+                print('Dates:', dates)
+            if durations:
+                print('Time Durations:', durations[-1])
+
+    
+    async def goto_full_story(page):
+        # Wait for all elements with class "cw" and "cx" to be available
+        await page.waitForSelector('a')
+        
+        # Get the href attributes of all matching elements
+        hrefs = await page.evaluate('''() => {
+            const elements = document.querySelectorAll('a');
+            return Array.from(elements)
+                .map(element => element.getAttribute('href'))
+                .filter(href => href && href.startsWith('/story'));
+        }''')
+        
+        
+        # Remove duplicates
+        hrefs = list(set(hrefs))
+
+        for href in hrefs:
+            print('href:', href)
+
+        return hrefs
+    
+    #browser = await launch(headless=False, userDataDir='./userdata')
+    page = await browser.newPage()
+    
+    # Intercept requests to block images
+    await page.setRequestInterception(True)
+    page.on('request', lambda req: asyncio.ensure_future(req.abort()) if req.resourceType == 'image' else asyncio.ensure_future(req.continue_()))
+    
+    url = f'https://mbasic.facebook.com/search/posts?q={quote(query)}&filters=eyJyZWNlbnRfcG9zdHM6MCI6IntcIm5hbWVcIjpcInJlY2VudF9wb3N0c1wiLFwiYXJnc1wiOlwiXCJ9In0%3D'
+    await page.goto(url)
+
+    more = await goto_more(page)
+    await page.goto(more)
+    
+    # Intercept requests to block images
+    #await page.setRequestInterception(False)
+    
+    more = await goto_more(page)
+    await page.goto(more)
+
+    articles = await extract_text_2(page)
+    # Get the href from the element with class "da db" and text "Full Story"
+    full_story = await goto_full_story(page)
+    print("Gotten")
+
+    while True:
+        pass
+    for href in full_story:
+        #print('href:', href)
+        await asyncio.sleep(0.5)
+        try:
+            await page.goto('https://mbasic.facebook.com' + href)
+            await extract_text(page)
+        except:
+            pass
+
+async def search_facebook(node, instruct_type=None, user_input=None):
+    if instruct_type != 3:
+        print("Search Facebook = False")
+        node.stop = True
+        return None
+    else:
+        # Run the function with a specific query
+        print("Searching facebook...")
+        try:
+            global browser
+            # Run the function with a specific query
+            async_wrapper_2(get_href, browser, 'palestine war news')
+            #asyncio.get_event_loop().run_until_complete(get_href(browser, 'palestine war news'))
+        except Exception as e:
+            print(e)
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+            "user_input" : "string",
+            "instruct_type" : "num",
+        },
+        "outputs": {
+            "output" : "output",
+        }
+    },
     "file_chooser" : {
         "function_name": "file_chooser",
         "import_string" : None,
@@ -1877,15 +2051,15 @@ async def display_output(node, user_input=None, output=None, instruct_type=None,
         grid_layout = app.root.get_screen("chatbox").ids.grid_layout
         
         grid_layout.add_widget(user_custom_component)
-        print(user_image)
-        if user_image != None:
+        print("User Image: ", user_image)
+        if user_image:
             print(user_image)
             grid_layout.add_widget(CustomImageComponent(img_source=user_image))
         grid_layout.add_widget(bot_custom_component)
         
         if instruct_type == 2:
-            #image_components.append(CustomImageComponent(img_source=image_path))
-            grid_layout.add_widget(CustomImageComponent(img_source=image_path))
+            #image_components.append(CustomImageComponent(img_source=user_image))
+            grid_layout.add_widget(CustomImageComponent(img_source=generated_image_path))
         
     # Schedule the update_ui function to run on the main thread
     Clock.schedule_once(update_ui)
@@ -2132,7 +2306,8 @@ async def prompt(node, model=None, user_input=None, context=None, instruct_type=
     print("Prompt")
     print(model, user_input, context)
     user_text = user_input
-    # Continue the conversation            
+    # Continue the conversation
+    context = "Context: " + context
     response = app.continue_conversation(user_text=user_text, context=context)
     print("output: ", response)
     return {"output" : response}
@@ -3766,7 +3941,7 @@ class CustomImageComponent(BoxLayout):
         # Example usage of img_source and txt as properties
         # self.add_widget(Image(source=img_source))
         # self.add_widget(Label(text=txt))
-    
+   
 class CustomLabel(ButtonBehavior, Label):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -4325,6 +4500,7 @@ print(\"Added\", {function_name})
     def switch_to_apps(self, instance):
         self.manager.transition = NoTransition()
         self.manager.current = 'select_app_screen'
+        
 class DraggableLabelApp(MDApp):
     past_messages = []
     def build(self):
@@ -4375,7 +4551,8 @@ class DraggableLabelApp(MDApp):
         # Create the chat completion request with updated past messages
         self.add_message("user", user_text)
         if context:
-            self.add_message("context", context)
+            print("Adding context: ", context)
+            self.add_message("user", context)
         chat_completion = client.chat.completions.create(
           messages=self.past_messages,
           model=model or "mistralai/Mixtral-8x7B-Instruct-v0.1"
