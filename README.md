@@ -1,3 +1,5 @@
+Unfortunate, the Facebook and Google search requires a separate main thread to run so requiring another subprocess call and returning the stdout which makes it extremely difficult to integrate into mobile apps without a proper browser.
+
 Do
 ```
 pip install -r requirements.txt
