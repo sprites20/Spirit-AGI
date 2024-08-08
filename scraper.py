@@ -108,3 +108,6 @@ async def get_href(query):
     
     await browser.close()
     return results
+
+# Run the script
+#asyncio.get_event_loop().run_until_complete(get_href("Facebook"))
