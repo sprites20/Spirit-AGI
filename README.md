@@ -1,4 +1,6 @@
-Google Gemini API hackathon
+Google Gemini API hackathon.
+
+
 
 Do
 ```
@@ -20,3 +22,10 @@ python somekivybox.py
 ![alt text](https://github.com/sprites20/Spirit-AGI/blob/main/images/nodes.png)
 
 ![alt text](https://github.com/sprites20/Spirit-AGI/blob/main/images/earth.png)
+
+Special Thanks to:
+https://github.com/Ashthetik/ - Contributor
+
+東方Project AI Discord Server
+
+Lablab.ai Community
