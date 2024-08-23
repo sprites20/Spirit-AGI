@@ -164,6 +164,10 @@ import cohere
 
 import nest_asyncio
 
+from huggingface_hub import HfApi, login, upload_file
+import pandas as pd
+import h5py
+from datasets import Dataset, DatasetDict
 
 nest_asyncio.apply()  # Apply the nest_asyncio patch
 
@@ -476,20 +480,22 @@ async def {self.current_name}(node, {{input1}}, {{input2}}): #Remember to change
         return {{{{\"output1\"}} : "", {{\"output2\"}} : []}} #Remember to change based on Outputs.
         """
         
-        gen_message = f"Generate python code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\nMake sure to replace inputs and outputs with the given names. Output nothing else but the code with indentations. Enclose with ```python"
+        gen_message = f"Generate python code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\nMake sure to replace inputs and outputs with the given names. Output nothing else, even after the code but the code with indentations. Enclose with ```python"
         new_message = ChatMessage(role = "user", content = gen_message)
         message.append(new_message)
+        
+        
         """
-        chat_completion = client.chat.completions.create(
-          messages=message,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
-        )
-        """
-
         model = "codestral-latest"
         chat_completion = client_mistral.chat(
             model=model,
             messages=message
+        )
+        """
+        
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
         )
         
         response = chat_completion.choices[0].message.content
@@ -519,22 +525,24 @@ This function adds 2 numbers and returns a sum.
 It is used when asked:
 - What is the sum of numbers 1 and 2?
 - The sum of 1 and 2 is?
+User Cases:
         """
         
         gen_message = f"Generate short description code given parameters.\n\nInputs:\n{inputs}\n\nOutputs:\n{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}\n\n. Output nothing else but the description."
         new_message = ChatMessage(role = "user", content = gen_message)
         message.append(new_message)
+        
         """
-        chat_completion = client.chat.completions.create(
-          messages=message,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
-        )
-        """
-
         model = "codestral-latest"
         chat_completion = client_mistral.chat(
             model=model,
             messages=message
+        )
+        """
+        
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         
         response = chat_completion.choices[0].message.content
@@ -574,17 +582,18 @@ It is used when asked:
         gen_message = f"Generate documentation of code given parameters. Base on what the code does\n\nInputs:{inputs}\n\nOutputs:{outputs}\n\n{gen_from}:\n{context}\n\nIn this format: \n{doc_format}"
         new_message = ChatMessage(role = "user", content = gen_message)
         message.append(new_message)
+        
         """
-        chat_completion = client.chat.completions.create(
-          messages=message,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
-        )
-        """
-
         model = "codestral-latest"
         chat_completion = client_mistral.chat(
             model=model,
             messages=message
+        )
+        """
+        
+        chat_completion = client.chat.completions.create(
+          messages=message,
+          model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         
         response = chat_completion.choices[0].message.content
@@ -2401,7 +2410,7 @@ async def get_instruct_type_node(node, user_input=None, context=None):
         message_array.append({"role": "context", "content": context})
     chat_completion = client.chat.completions.create(
       messages=message_array,
-      model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+      model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
     )
     
     response = chat_completion.choices[0].message.content
@@ -2962,6 +2971,9 @@ KV = '''
 
 <SelectAppScreen>
     name: 'select_app_screen'
+
+<LoraTrainerScreen>
+    name: 'lora_trainer_screen'
 <CustomComponent>:
     background_color: (0.5, 0.5, 0.5, 1)
     orientation: 'horizontal'
@@ -3188,6 +3200,7 @@ ScreenManager:
     WidgetTreeScreen:
     SelectAppScreen:
     MapScreen:
+    LoraTrainerScreen:
 '''
 
 import math
@@ -3841,7 +3854,224 @@ apps = {
     "Chatbot" : 'chatbox',
     "Renderer" : 'render_screen',
     "Map" : 'map_screen',
+    "Lora Trainer" : 'lora_trainer_screen'
 }
+
+class LoraTrainerScreen(Screen):
+    def __init__(self, **kwargs):
+        super(LoraTrainerScreen, self).__init__(**kwargs)
+        
+        # Your Hugging Face token
+        HF_TOKEN = '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'  # Replace with your actual Hugging Face token
+
+        # Authenticate with Hugging Face
+        login(token=HF_TOKEN)
+        
+        # Existing DataFrame
+        self.new_data = pd.DataFrame({
+            'prompt': []
+        })
+        
+        self.data_points = []
+        # Create the main layout for the screen
+        screen_layout = BoxLayout(orientation='vertical')
+        
+        # Create the back button layout
+        back_box = BoxLayout(size_hint=(1, None), height=40)
+        back_button = Button(text="Back")
+        back_button.bind(on_press=self.back_button_on_press)
+        back_box.add_widget(back_button)
+        
+        # Create additional input boxes
+        hugging_face_input_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        hugging_face_label = Label(text="HuggingFace Authtoken", size_hint_x=.25)
+        self.hugging_face_input = TextInput(size_hint_x=.75, multiline=False)
+        hugging_face_input_box.add_widget(hugging_face_label)
+        hugging_face_input_box.add_widget(self.hugging_face_input)
+        
+        repo_id_input_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        repo_id_label = Label(text="repo_id", size_hint_x=.25)
+        self.repo_id_input = TextInput(size_hint_x=.75, multiline=False)
+        repo_id_input_box.add_widget(repo_id_label)
+        repo_id_input_box.add_widget(self.repo_id_input)
+        
+        input_input_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=100)
+        input_label = Label(text="Input", size_hint_x=.25)
+        self.input_input = TextInput(size_hint_x=.75, multiline=True)
+        input_input_box.add_widget(input_label)
+        input_input_box.add_widget(self.input_input)
+        
+        instruction_input_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=100)
+        instruction_label = Label(text="Instruction", size_hint_x=.25)
+        self.instruction_input = TextInput(size_hint_x=.75, multiline=True)
+        instruction_input_box.add_widget(instruction_label)
+        instruction_input_box.add_widget(self.instruction_input)
+        
+        output_input_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=100)
+        output_label = Label(text="Output", size_hint_x=.25)
+        self.output_input = TextInput(size_hint_x=.75, multiline=True)
+        output_input_box.add_widget(output_label)
+        output_input_box.add_widget(self.output_input)
+        
+        save_box = BoxLayout(orientation='horizontal', size_hint=(1, None), height=40)
+        
+        add_to_batch_button = Button(text="Add To Batch")
+        add_to_batch_button.bind(on_press=self.add_to_batch)
+        save_box.add_widget(add_to_batch_button)
+        
+        append_batch_button = Button(text="Append Batch to Dataset")
+        append_batch_button.bind(on_press=self.append_batch)
+        save_box.add_widget(append_batch_button)
+        
+        upload_batch_button = Button(text="Upload Dataset to HuggingFace")
+        upload_batch_button.bind(on_press=self.upload_batch)
+        save_box.add_widget(upload_batch_button)
+        
+        log_box = BoxLayout(orientation="horizontal", size_hint=(1, None), height=50)
+        log_label_text = Label(text="Log", size_hint_x=0.75)
+        reset_log_button = Button(text="Reset Log", size_hint_x=0.25)
+        log_box.add_widget(log_label_text)
+        log_box.add_widget(reset_log_button)
+        
+        
+        self.log_textinput = TextInput(size_hint=(1, None), multiline=True, readonly=True, hint_text="Logs show here")
+        
+
+        # Add the back box and additional input boxes to the screen layout
+        screen_layout.add_widget(back_box)  # Back box at the top
+        screen_layout.add_widget(hugging_face_input_box)  # Additional inputs below
+        screen_layout.add_widget(repo_id_input_box)
+        screen_layout.add_widget(input_input_box)
+        screen_layout.add_widget(instruction_input_box)
+        screen_layout.add_widget(output_input_box)
+        screen_layout.add_widget(save_box)
+        screen_layout.add_widget(log_box)
+        screen_layout.add_widget(self.log_textinput)
+        
+        # Add the screen layout to the screen
+        self.add_widget(screen_layout)
+    def back_button_on_press(self, instance):
+        app = App.get_running_app()
+        self.manager.current = 'draggable_label_screen'
+    # Define the generate_prompt function
+    def add_to_batch(self, instance):
+        data_point = {"input": self.input_input.text, "instruction": self.instruction_input.text, "output": self.output_input.text}
+        self.data_points.append(data_point)
+        self.log_textinput.text += "Added to 1 prompt batch\n"
+    def append_batch(self, instance):
+        # Generate prompts and create a new DataFrame
+        generated_prompts = [self.generate_prompt(dp) for dp in self.data_points]
+        generated_data = pd.DataFrame({'prompt': generated_prompts})
+
+        # Append the new DataFrame to the existing one
+        new_data = pd.concat([self.new_data, generated_data], ignore_index=True)
+
+        #print(new_data)
+
+        # Convert DataFrame to numpy array of bytes for text data
+        new_data_array = new_data['prompt'].astype('S256').to_numpy()
+        # File path
+        hdf5_file = 'prompts.h5'
+        self.append_data_to_hdf5(hdf5_file, new_data_array)
+        self.data_points = []
+        self.log_textinput.text += f"Appended batch to {hdf5_file}\n"
+    def upload_batch(self, instance):
+        try:
+            # Hugging Face repository setup
+            repo_id = self.repo_id_input.text or "IanVilla/gemma-2-finetuning"  # Replace with your Hugging Face username and desired repo name
+            hdf5_file = 'prompts.h5'
+            # Initialize Hugging Face API
+            api = HfApi()
+            HF_TOKEN = self.hugging_face_input.text
+            login(token=HF_TOKEN)
+        except Exception as e:
+            print(e)
+
+        # Create the repository if it does not exist
+        try:
+            # Check if repo exists
+            repo_info = api.repo_info(repo_id)
+            print(f"Repository '{repo_id}' already exists.")
+        except Exception as e:
+            # Create repo if it does not exist
+            try:
+                api.create_repo(repo_id, repo_type="dataset")
+                print(f"Repository '{repo_id}' created.")
+            except Exception as e:
+                print(f"An error occurred while creating the repository: {e}")
+
+        # Upload the file to Hugging Face (this will overwrite the existing file)
+        try:
+            upload_file(
+                path_or_fileobj=hdf5_file,
+                path_in_repo=hdf5_file,
+                repo_id=repo_id,
+                repo_type="dataset",
+                token=HF_TOKEN,
+                commit_message="Updated HDF5 file with new data",
+            )
+            print(f"File '{hdf5_file}' updated in repo '{repo_id}'.")
+        except Exception as e:
+            print(f"An error occurred while uploading the file: {e}")
+
+        df = self.read_hdf5('prompts.h5')
+        print(df)
+
+        # Convert the DataFrame to a Dataset object
+        dataset = Dataset.from_pandas(df)
+
+        # Create a DatasetDict object
+        dataset_dict = DatasetDict({
+            "train": dataset
+        })
+
+        # Upload the dataset to Hugging Face
+        dataset_dict.push_to_hub(repo_id=repo_id, token=HF_TOKEN)
+    def generate_prompt(self, data_point):
+        """Generate input text based on a prompt, task instruction, (context info.), and answer
+
+        :param data_point: dict: Data point
+        :return: str: tokenized prompt
+        """
+        prefix_text = 'Below is an instruction that describes a task. Write a response that ' \
+                       'appropriately completes the request.\n\n'
+        if data_point['input']:
+            text = f"""<start_of_turn>user {prefix_text} {data_point["instruction"]} here are the inputs {data_point["input"]} <end_of_turn>\n<start_of_turn>model{data_point["output"]} <end_of_turn>"""
+        else:
+            text = f"""<start_of_turn>user {prefix_text} {data_point["instruction"]} <end_of_turn>\n<start_of_turn>model{data_point["output"]} <end_of_turn>"""
+        return text
+    def read_hdf5(self, file_path):
+        with h5py.File(file_path, 'r') as f:
+            if 'prompts' in f:
+                # Access the dataset
+                dataset = f['prompts']
+                # Convert to DataFrame
+                # Since the data is stored as bytes, decode and convert to DataFrame
+                data = [entry.decode('utf-8') for entry in dataset[:]]
+                df = pd.DataFrame(data, columns=['prompt'])
+                return df
+            else:
+                print("Dataset 'prompts' not found.")
+                return None
+
+
+    # Function to append data to HDF5
+    def append_data_to_hdf5(self, file_path, new_data):
+        with h5py.File(file_path, 'a') as f:
+            if 'prompts' in f:
+                # Dataset exists, extend it
+                dataset = f['prompts']
+                # Resize dataset to accommodate new data
+                old_size = dataset.shape[0]
+                new_size = old_size + new_data.shape[0]
+                dataset.resize(new_size, axis=0)
+                # Append new data
+                dataset[old_size:] = new_data
+            else:
+                # Dataset does not exist, create it
+                f.create_dataset('prompts', data=new_data, maxshape=(None,), dtype='S256')
+
+
 class SelectAppScreen(Screen):
     def __init__(self, **kwargs):
         super(SelectAppScreen, self).__init__(**kwargs)
@@ -4738,7 +4968,7 @@ class DraggableLabelApp(MDApp):
             self.add_message("user", context)
         chat_completion = client.chat.completions.create(
           messages=self.past_messages,
-          model=model or "mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model=model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         print(self.past_messages)
         response = chat_completion.choices[0].message.content
@@ -4796,7 +5026,7 @@ class DraggableLabelApp(MDApp):
         self.add_message("system", generate_code)
         chat_completion = client.chat.completions.create(
           messages=self.past_messages,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         
         response = chat_completion.choices[0].message.content
@@ -4817,7 +5047,7 @@ class DraggableLabelApp(MDApp):
         message_array.append({"role": "user", "content": generate_code})
         chat_completion = client.chat.completions.create(
           messages=message_array,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         
         response = chat_completion.choices[0].message.content
@@ -4845,7 +5075,7 @@ class DraggableLabelApp(MDApp):
         message_array.append({"role": "user", "content": generate_code})
         chat_completion = client.chat.completions.create(
           messages=message_array,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
         )
         
         response = chat_completion.choices[0].message.content

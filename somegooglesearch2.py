@@ -117,6 +117,53 @@ async def download_webpage_text(url, folder_path, search_query):
         print(f"Error fetching {url}: {e}")
         return None
     
+def generate_instructs(context):
+    #user_prompt = random_search_query
+    # Format UTC time
+    print("Generating instructs")
+    formatted_utc_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    TOGETHER_API_KEY = "5391e02b5fbffcdba1e637eada04919a5a1d9c9dfa5795eafe66b6d464d761ce"
+
+    client = OpenAI(
+    api_key=TOGETHER_API_KEY,
+    base_url='https://api.together.xyz/v1',
+    )
+    chat_completion = client.chat.completions.create(
+    messages=[
+        {
+          "role": "system",
+          "content": "You are a LORA trainer, you generate synthetic data for instruct finetuning.",
+        },
+        {
+          "role": "user",
+          "content": f'''
+{context}
+
+Based on the context
+
+Generate a json for fine-tuning instruct model with LORA using the following:
+Enclose the json like:
+"""json 
+{{
+    "input": <the context/input>
+    "instruction": <instruction based on the input>
+    "output": <the output>
+}},
+{{<more>
+}},
+"""
+''',
+        }
+      ],
+      model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+    )
+
+    result = chat_completion.choices[0].message.content
+    
+    print(result)
+    
+    return result
+
 def get_search_query(user_prompt):
     #user_prompt = random_search_query
     # Format UTC time
@@ -198,7 +245,8 @@ async def fetch_search_results(search_query, folder_path):
                             "url": url,
                             "text": text,
                         }
-                        print(text)
+                        #print(text)
+                        generate_instructs(text)
                         send_one_doc_to_vectara(temp_json, metadata_args, file_path)
                     except Exception as e:
                         print(f"Error fetching {url}: {e}")
@@ -242,6 +290,6 @@ def run_search_and_download(search_query):
     asyncio.get_event_loop().run_until_complete(fetch_search_results(search_query, folder_path))
 
 
-get_search_query('search about pharmacology')
+#get_search_query('search about pharmacology')
 # Example usage
-#run_search_and_download('pharmacology')
+run_search_and_download('recent technology')
