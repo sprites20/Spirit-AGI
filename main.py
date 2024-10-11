@@ -191,11 +191,16 @@ service_context = ServiceContext.from_defaults(
 """
 user_prompt = "Function to print nth fibonacci number."
 
-TOGETHER_API_KEY = "5391e02b5fbffcdba1e637eada04919a5a1d9c9dfa5795eafe66b6d464d761ce"
-
+TOGETHER_API_KEY = "4070baa3baed3400f79377ea3b4221f2024725f970bbf02dd0b6d4fba2175bc6"
+"""
 client = OpenAI(
   api_key=TOGETHER_API_KEY,
   base_url='https://api.together.xyz/v1',
+)
+"""
+client = OpenAI(
+    api_key="95375458de2544cfb665366052759dbb",
+    base_url="https://api.aimlapi.com",
 )
 
 MISTRAL_API_KEY = "VuNE7EzbFp5QA0zoYl0LokvrTitF7yrg"
@@ -495,7 +500,7 @@ async def {self.current_name}(node, {{input1}}, {{input2}}): #Remember to change
         
         chat_completion = client.chat.completions.create(
           messages=message,
-          model="mistralai/Mixtral-8x7B-Instruct-v0.1"
+          model="o1-preview"
         )
         
         response = chat_completion.choices[0].message.content
@@ -744,27 +749,103 @@ class RenderScreen(Screen):
         # Switch to 'chatbox'
         self.manager.transition = NoTransition()
         self.manager.current = 'draggable_label_screen'
+
+    def change_to_red(self):
+        nodes[self.node_id].label_color.rgba = (1,0,0,1)
         
+    def change_to_gray(self):
+        nodes[self.node_id].label_color.rgba = (0.5, 0.5, 0.5, 1)
+
 class AsyncNode:
     def __init__(self, function_name=None, node_id=None, input_addresses=[], output_args={}, trigger_out=[]):
         self.trigger_in = None
         self.trigger_out = []
         self.function_name = function_name
         self.input_addresses = input_addresses
-        self.output_args = output_args
+        self.input_addresses_is_done = []
+        self.trigger_out_taken = []
+        self.output_args = {}
         self.node_id = node_id
         self.stop = False
         self.args = {}
-        
+        self.trigger_out_callbacks = 0
+        self.callbacks = {}
+        self.isWaiting = threading.Event()  # Use threading.Event
+        self.function_to_call = functions.get(self.function_name)
+
     def change_to_red(self):
-        nodes[self.node_id].label_color.rgba = (1,0,0,1)
+        nodes[self.node_id].label_color.rgba = (1, 0, 0, 1)
+
     def change_to_gray(self):
         nodes[self.node_id].label_color.rgba = (0.5, 0.5, 0.5, 1)
-    async def trigger_node(self, node):
+
+    def trigger_node(self, node=None, user_id=None):
         node.trigger_in = self.node_id
-        #print(node, node.trigger_in)
-        await node.trigger()
-    async def trigger(self):
+        thread = threading.Thread(target=node.trigger, args=(node, user_id))
+        thread.start()
+        
+    def callback(self, user_id):
+        if user_id not in self.callbacks:
+            self.callbacks[user_id] = False
+        else:
+            print("Callback: ", self.node_id)
+            self.callbacks[user_id] = True
+
+    def trigger(self, node=None, node_id=None, callback=None, user_id=None):
+        user_id = user_id or "user"
+        if user_id not in self.output_args:
+            self.output_args[user_id] = {}
+
+        if self.trigger_in:
+            if self.trigger_in.startswith("stop_after"):
+                self.stop = True
+            elif self.trigger_in.startswith("reset_outputs"):
+                self.output_args[user_id].clear()  # Clear outputs for reset
+                return None
+        
+        # Change color to red
+        Clock.schedule_once(lambda dt: self.change_to_red(), 0)
+
+        # Get input arguments
+        input_args = {}
+        for address in self.input_addresses:
+            node = address.get("node")
+            arg_name = address.get("arg_name")
+            target = address.get("target")
+            try:
+                input_args[target] = node.output_args[user_id].get(arg_name)
+            except Exception as e:
+                print(node, arg_name, target, e)
+
+        if self.function_to_call:
+            function_done = threading.Event()  # Event to signal function completion
+            #function_done.clear()  # Clear the event before running the function
+
+            # Create a separate thread for the function call
+            def run_function():
+                output_args = self.function_to_call(self, **input_args) or {}
+                self.output_args[user_id] = output_args
+                # Change color to gray after processing
+                Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
+                # Wait for the function to finish before continuing
+                # Wait for the function to finish before continuing
+                function_done.set()  # Signal that the function is done
+                function_done.wait()  # Block until the function is complete
+
+            thread = threading.Thread(target=run_function)
+            thread.start()
+
+            function_done.wait()  # Block until the function is complete
+        if not self.stop:
+            for node_to_run in self.trigger_out:
+                self.trigger_node(node=node_to_run, user_id=user_id)
+
+        self.stop = False  # Reset the stop condition if needed
+    """
+    async def trigger(self, node=None, node_id = None, callback=None, user_id=None):
+        user_id = user_id or "user"
+        if user_id not in self.output_args:
+            self.output_args[user_id] = {}
         if self.trigger_in:
             if self.trigger_in.startswith("stop_after"):
                 self.stop = True
@@ -772,63 +853,101 @@ class AsyncNode:
                 print(f"Resetting output {self.node_id}")
                 try:
                     for arg_name in self.output_args:
-                        self.output_args[arg_name] = None
+                        self.output_args[user_id][arg_name] = None
                 except:
                     pass
                 return None
         # Get the function from the dictionary based on the function_name
-        function_to_call = functions.get(self.function_name)
+        
         #print(self, self.node_id)
-        if function_to_call:
+        
+        if self.function_to_call:
             #print(f"Calling function {self.function_name}")
             # Fetch input_args from input_addresses
             input_args = {}
+            
             #print(self.input_addresses)
+            #First we take the user_id
+            Clock.schedule_once(lambda dt: self.change_to_red(), 0)
+            
             for address in self.input_addresses:
                 node = address.get("node")
                 arg_name = address.get("arg_name")
                 target = address.get("target")
                 try:
-                    input_args[target] = node.output_args.get(arg_name)
+                    input_args[target] = node.output_args[user_id].get(arg_name)
+                    #Initiate callback
+                    #print(node, arg_name, node.output_args[user_id].get(arg_name))
                 except Exception as e:
                     print(node, arg_name, target, e)
-                #print(input_args[target])
-                #Here replace thing in output args with whatever queued. If none use same thing
+            #Initiate callback
+            
+            
+            #print(input_args[target])
+            #Here replace thing in output args with whatever queued. If none use same thing
             #print("Input Addresses: ", self.input_addresses)
             #print("Input Args", input_args)
             # Pass input_args and self to the function
             # Schedule UI update in the main Kivy thread
-            Clock.schedule_once(lambda dt: self.change_to_red(), 0)
+            
             # Use asyncio.create_task() to avoid conflicts
-            task = asyncio.create_task(function_to_call(self, **input_args))
+            task = asyncio.create_task(self.function_to_call(self, **input_args))
+            
+            try:
+                #print("Callback: ", node_id)
+                await async_nodes[node_id].callback(user_id)
+            except:
+                pass
             
             output_args = await task
             Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
             #print("Output args: ", output_args)
             
             # Update output_args with the function's output, appending new args and replacing existing ones
+            #await self.isWaiting.wait()  # Wait until the event is set (instead of while-loop)
+			#self.isWaiting.clear()  # Clear the event before setting it again
+			#There may be other race conditions where 2 of the same nodes are waiting
+            
+            if user_id in self.callbacks:
+                while not self.callbacks[user_id]:
+                    pass
+            
             try:
                 for arg_name, value in output_args.items():
-                    if arg_name not in self.output_args:
-                        self.output_args[arg_name] = value
-                    else:
-                        self.output_args[arg_name] = value
+                    if arg_name not in self.output_args[user_id]:
+                        self.output_args[user_id][arg_name] = value
             except:
                 pass
+            #print("Ran: ", self.node_id)
+            #self.callbacks[user_id] = False
+			#self.isWaiting.set()  # Indicate that the processing is complete
+			
         #print(node)
         #print("Output args: ", self.output_args)
         #print(self.output_args)
-        """
+        
         for node in self.trigger_out:
             #print(f"Triggering output node {node.function_name}")
             await node.trigger()
-        """
-        if not self.stop:
-            tasks = [asyncio.create_task(self.trigger_node(node)) for node in self.trigger_out]
-            await asyncio.gather(*tasks)
-        else:
-            self.stop = False
+        
+        # Limit concurrent execution using semaphore
+        async with self.semaphore:
+            if self.function_to_call:
+                task = asyncio.create_task(self.function_to_call(self, **input_args))
+                output_args = await task or {}
+                
+                # Clear previous user output args
+                self.output_args[user_id] = {}
+                
+                # Process output arguments
+                for arg_name, value in output_args.items():
+                    self.output_args[user_id][arg_name] = value
 
+        if not self.stop:
+            await asyncio.gather(*(self.trigger_node(node=node_to_run, user_id=user_id) for node_to_run in self.trigger_out))
+
+        self.stop = False  # Reset the stop condition if needed
+    """
 class MousePositionWidget(Widget):
     def __init__(self, **kwargs):
         super(MousePositionWidget, self).__init__(**kwargs)
@@ -1628,10 +1747,409 @@ def save_dicts_as_json_files(data, output_directory):
             json.dump(value, f, indent=4)
 
 
+from flask import Flask, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
+from flask_cors import CORS  # Import CORS
+import os
+import threading
+from collections import defaultdict
+import queue
+from pyngrok import ngrok  # Import pyngrok
+
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})  # For development, but consider restricting in production.
+app.config['SECRET_KEY'] = 'your_secret_key'
+#socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Set a folder to store the uploaded files
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+clients = {}
+user_queues = queue.Queue()
+user_locks = threading.Lock()
+
+# Queue for connection events
+connection_queue = queue.Queue()
+connection_lock = threading.Lock()
+
+@socketio.on('connect')
+def handle_connect():
+    sid = request.sid
+    user_id = request.args.get('user_id')
+    splitted = user_id.split("_")
+    timestamp = splitted[0]
+    user_id = splitted[1] + "_" + splitted[2]
+    print(user_id)
+    with connection_lock:
+        # Add connection request to the connection queue
+        connection_queue.put((user_id, sid))
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    user_id = None
+    for uid, stored_sid in clients.items():
+        if stored_sid == sid:
+            user_id = uid
+            break
+    if user_id:
+        del clients[user_id]
+        print(f"Client {user_id} disconnected")
+
+@socketio.on('client_event')
+def handle_client_event(data):
+    user_id = data.get('sender')
+    message = data.get('text')
+    image_url = data.get('image')
+    
+    splitted = user_id.split("_")
+    timestamp = splitted[0]
+    user_id = splitted[1] + "_" + splitted[2]
+    
+    # Create a response data structure
+    response_data = {
+        'text': message,
+        'image': image_url,
+        'sender': user_id
+    }
+    
+    with user_locks:
+        # Put the response data into the user's queue for processing
+        user_queues.put(response_data)
+        print(f"Received message from {user_id}: {message}")
+
+# HTTP route to handle file upload
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files['file']
+    user_id = request.form.get('user_id')
+
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    if file:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(file_path)
+        print(f"File {file.filename} uploaded by {user_id}")
+
+        # Construct the URL for the uploaded file
+        file_url = f"http://localhost:5000/uploads/{file.filename}"
+        """
+        # Emit a message to the client with the file URL
+        if user_id in clients:
+            socketio.emit('server_response', {
+                'response': f"File {file.filename} uploaded successfully!",
+                'file_url': file_url  # Send the file URL
+            }, room=clients[user_id])
+        """
+        return jsonify({"message": "File uploaded successfully", "file_url": file_url}), 200
+
+# Serve uploaded images
+@app.route('/uploads/<filename>', methods=['GET'])
+def serve_uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+"""
+def emit_back_to_client(user_id, response_data):
+    sid = clients.get(user_id)
+    if sid:
+        socketio.emit('server_response', response_data, room=sid)
+    else:
+        print(f"Client {user_id} is not connected")
+"""
+
+# GitHub API Configuration
+GITHUB_TOKEN = 'yeah'
+GITHUB_REPO = 'sprites20/Spirit-AGI'
+GITHUB_BRANCH = 'main'
+NGROK_LINK_FILE_PATH = 'ngrok-link.json'
+
+# Function to check if the file exists in the repository
+def file_exists():
+    file_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NGROK_LINK_FILE_PATH}?ref={GITHUB_BRANCH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    response = requests.get(file_url, headers=headers)
+    return response.status_code == 200
+# Function to create a new file in GitHub
+def create_file(public_url):
+    file_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NGROK_LINK_FILE_PATH}?ref={GITHUB_BRANCH}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    # Prepare the content to be written to the file
+    # Construct the JSON object with the ngrok URL
+    new_content = {
+        "ngrok_url": public_url  # Set the URL in the JSON structure
+    }
+
+    # Encode the JSON object as Base64
+    content_base64 = base64.b64encode(json.dumps(new_content).encode('utf-8')).decode('utf-8')  # Encode in Base64
+
+    # Prepare the payload to create the file
+    data = {
+        "message": "Create ngrok-link.json",
+        "content": content_base64,
+        "branch": GITHUB_BRANCH
+    }
+
+    # Create the file on GitHub
+    create_response = requests.put(file_url, headers=headers, json=data)
+    if create_response.status_code == 201:
+        print(f"Successfully created ngrok-link.json in GitHub with URL: {public_url}")
+    else:
+        print("Error creating file in GitHub:", create_response.text)
+
+# Function to update the ngrok URL in GitHub
+def update_github_ngrok_link(public_url):
+    if file_exists():
+        print("File exists. Proceeding to update.")
+        file_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NGROK_LINK_FILE_PATH}?ref={GITHUB_BRANCH}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        # Fetch the current file SHA
+        response = requests.get(file_url, headers=headers)
+        
+        if response.status_code == 200:
+            file_info = response.json()
+            file_sha = file_info['sha']
+
+            # Prepare the new content
+            new_content = {
+                "ngrok_url": public_url  # Set the URL in the JSON structure
+            }
+            
+            # Encode the JSON object as Base64
+            content_base64 = base64.b64encode(json.dumps(new_content).encode('utf-8')).decode('utf-8')  # Encode in Base64
+
+            # Prepare the payload to update the file
+            data = {
+                "message": "Update ngrok URL",
+                "content": content_base64,
+                "sha": file_sha,
+                "branch": GITHUB_BRANCH
+            }
+
+            # Update the file on GitHub
+            update_response = requests.put(file_url, headers=headers, json=data)
+            if update_response.status_code == 200:
+                print(f"Successfully updated ngrok URL in GitHub to {public_url}")
+            else:
+                print("Error updating file in GitHub:", update_response.text)
+        else:
+            print("Error fetching file from GitHub:", response.text)
+    else:
+        print("File does not exist. Creating file.")
+        create_file(public_url)
 
 
+# Function to update the ngrok URL in GitHub
+def update_github_ngrok_link(public_url):
+    if file_exists():
+        print("File exists. Proceeding to update.")
+        file_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NGROK_LINK_FILE_PATH}?ref={GITHUB_BRANCH}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        # Fetch the current file SHA
+        response = requests.get(file_url, headers=headers)
+        
+        if response.status_code == 200:
+            file_info = response.json()
+            file_sha = file_info['sha']
+
+            # Prepare the new content
+            new_content = {
+                "ngrok_url": public_url  # Set the URL in the JSON structure
+            }
+            
+            # Encode the JSON object as Base64
+            content_base64 = base64.b64encode(json.dumps(new_content).encode('utf-8')).decode('utf-8')  # Encode in Base64
+
+            # Prepare the payload to update the file
+            data = {
+                "message": "Update ngrok URL",
+                "content": content_base64,
+                "sha": file_sha,
+                "branch": GITHUB_BRANCH
+            }
+
+            # Update the file on GitHub
+            update_response = requests.put(file_url, headers=headers, json=data)
+            if update_response.status_code == 200:
+                print(f"Successfully updated ngrok URL in GitHub to {public_url}")
+            else:
+                print("Error updating file in GitHub:", update_response.text)
+        else:
+            print("Error fetching file from GitHub:", response.text)
+    else:
+        print("File does not exist. Creating file.")
+        create_file(public_url)
+
+
+# Function to reconnect ngrok every 5 minutes and update GitHub
+def update_ngrok_url_periodically():
+    ngrok.set_auth_token("2hZ1a3ktCeJBhkG9DsThddItHbW_4rd6NSVgphvNE5Efti4A9")
+
+    while True:
+        # Open a new ngrok tunnel
+        public_url = ngrok.connect(5000)
+        print(f"ngrok tunnel \"{public_url}\" -> \"http://127.0.0.1:5000\"")
+
+        # Update the ngrok link in GitHub
+        update_github_ngrok_link(str(public_url))
+
+        # Wait for 5 minutes (300 seconds)
+        time.sleep(60*60*5)
+
+        # Disconnect the current ngrok tunnel
+        ngrok.disconnect(public_url)
+
+# Function to run the Flask-SocketIO server
+def run_server():
+    ngrok.set_auth_token("2hZ1a3ktCeJBhkG9DsThddItHbW_4rd6NSVgphvNE5Efti4A9")
+    #public_url = ngrok.connect(5000)
+    #print(f"ngrok tunnel \"{public_url}\" -> \"http://127.0.0.1:5000\"")
+    
+    # Start the Flask-SocketIO server
+    socketio.run(app, host='0.0.0.0', port=5000, use_reloader=False, log_output=True)
+
+
+
+"""
+# Start the ngrok URL update thread
+ngrok_update_thread = threading.Thread(target=update_ngrok_url_periodically)
+ngrok_update_thread.daemon = True
+ngrok_update_thread.start()
+"""
+# Start the server in a separate thread
+server_thread = threading.Thread(target=run_server)
+server_thread.daemon = True
+server_thread.start()
+
+# Main program continues here
+print("SocketIO server is running in the background and ngrok URL is being updated every 5 minutes.")
 
 node_init = {
+    "ignition" : {
+            "function_name": "ignition",
+            "import_string" : None,
+            "function_string" : """
+def ignition(node):
+    print("Ignition")
+    await asyncio.sleep(.25)
+    return None
+            """,
+            "description" : None,
+            "documentation" : None,
+            "inputs" : {
+			"user_id" : "string",
+            },
+            "outputs" : {
+			"user_id" : "string",
+            }
+        },
+    "process_connection_queue" : {
+        "function_name": "process_connection_queue",
+        "import_string" : None,
+        "function_string" : """
+def process_connection_queue(node):
+    if not connection_queue.empty():
+        user_id, sid = connection_queue.get()  # Get the next connection request
+        if user_id:
+            clients[user_id] = sid  # Register the client
+            print(f"Client {user_id} connected with session ID {sid}")
+            node.args["user_id"] = user_id
+            return {"user_id" : user_id}
+        else:
+            return None
+    else:
+        return None
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        "user_id" : "string",
+        },
+        "outputs" : {
+        "user_id" : "string",
+        }
+    },
+    "process_queue" : {
+        "function_name": "process_queue",
+        "import_string" : None,
+        "function_string" : """
+def process_queue(node):
+    if not user_queues.empty():
+        message_data = user_queues.get()  # Get the oldest message in the queue
+        if message_data:
+            print("Message data: ", message_data)
+            return {
+                "user_id" : message_data["sender"], 
+                "message" : message_data["text"],
+                "image" : message_data["image"]
+            }
+        else:
+            return None
+    else:
+        return {
+                "user_id" : None, 
+                "message" : None,
+                "image" : None
+            }
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        "user_id" : "string",
+        },
+        "outputs" : {
+        "user_id" : "string",
+        "message" : "string",
+        "image" : "image",
+        }
+    },
+    "emit_back_to_client" : {
+        "function_name": "emit_back_to_client",
+        "import_string" : None,
+        "function_string" : """
+def emit_back_to_client(node, user_id=None, message=None):
+    print("Emitting to: ", user_id)
+    sid = clients.get(user_id)
+    image_url = "nil"
+    response_data = {
+        'text': message,
+        'image': image_url,
+        'sender': "Bot"
+    }
+    if sid:
+        socketio.emit('server_response', response_data, room=sid)
+    else:
+        print(f"Client {user_id} is not connected")
+        """,
+        "description" : None,
+        "documentation" : None,
+        "inputs" : {
+        "user_id" : "string",
+        "message" : "string"
+        },
+        "outputs" : {
+        "user_id" : "string",
+        }
+    },
     "stt" : {
         "function_name": "stt",
         "import_string" : None,
@@ -1795,7 +2313,7 @@ audio_data = b''
 wait_time = 0
 spoken = False
 
-async def stt(node):
+def stt(node):
     def update_text_input(dt, transcribed_text):
         app.root.get_screen("chatbox").ids.text_input.text += transcribed_text
 
@@ -1851,8 +2369,10 @@ async def stt(node):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "transcribed_text" : "string",
         }
     },
@@ -1861,7 +2381,7 @@ async def stt(node):
         "import_string" : None,
         "function_string" : """
 '''
-async def text_to_wav_instance(node, text):
+def text_to_wav_instance(node, text):
     return None
 '''
 
@@ -1902,7 +2422,10 @@ def get_wav_duration(file_path):
         duration = frames / float(frame_rate)
         return duration
 engine = pyttsx3.init()
-async def text_to_wav_instance(node, text):
+# Set the rate and volume (optional)
+engine.setProperty('rate', 150)  # Speed of speech
+engine.setProperty('volume', 1.0)  # Volume (0.0 to 1.0)
+def text_to_wav_instance(node, text):
     filename = "output.wav"
     global engine
     if tts:
@@ -1965,9 +2488,11 @@ async def text_to_wav_instance(node, text):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "text" : "string"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "speech_wav" : "sound",
             "duration" : "num"
         }
@@ -1976,7 +2501,7 @@ async def text_to_wav_instance(node, text):
         "function_name": "play_audio_tts",
         "import_string" : None,
         "function_string" : """
-async def play_audio_tts(node, sound=None, duration=None):
+def play_audio_tts(node, sound=None, duration=None):
     '''
     if node.trigger_in.startswith("text_to_wav_instance"):
         if not "sounds" in node.args:
@@ -2006,17 +2531,19 @@ async def play_audio_tts(node, sound=None, duration=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "sound" : "sound",
             "duration" : "num"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
     "stop_audio_tts" : {
         "function_name": "stop_audio_tts",
         "import_string" : None,
         "function_string" : """
-async def stop_audio_tts(node, sound=None):
+def stop_audio_tts(node, sound=None):
     try:
         if sound.state == 'play':
             sound.stop()
@@ -2026,9 +2553,11 @@ async def stop_audio_tts(node, sound=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "sound" : "sound"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
     "reset_input_box" : {
@@ -2036,7 +2565,7 @@ async def stop_audio_tts(node, sound=None):
         "import_string" : None,
         "function_string" : """
 
-async def reset_input_box(node):
+def reset_input_box(node):
     app = MDApp.get_running_app()
     def update_text_input(dt):
         app.root.get_screen("chatbox").ids.text_input.text = ''
@@ -2045,15 +2574,17 @@ async def reset_input_box(node):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
     "trigger_after_stt" : {
         "function_name": "trigger_after_stt",
         "import_string" : None,
         "function_string" : """
-async def trigger_after_stt(node, transcribed_text=None):
+def trigger_after_stt(node, transcribed_text=None):
     global wait_time
     global spoken
     if spoken:
@@ -2070,9 +2601,11 @@ async def trigger_after_stt(node, transcribed_text=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "transcribed_text" : "string"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
     "search_facebook" : {
@@ -2080,7 +2613,7 @@ async def trigger_after_stt(node, transcribed_text=None):
         "import_string" : None,
         "function_string" : """
 
-async def search_facebook(node, user_input=None, instruct_type=None):
+def search_facebook(node, user_input=None, instruct_type=None):
     if instruct_type == 3:
         # Building the command
         command = ['python', 'search_facebook.py'] + [user_input]
@@ -2099,10 +2632,12 @@ async def search_facebook(node, user_input=None, instruct_type=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "user_input" : "string",
             "instruct_type" : "num",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "output" : "output",
         }
     },
@@ -2110,7 +2645,7 @@ async def search_facebook(node, user_input=None, instruct_type=None):
         "function_name": "file_chooser",
         "import_string" : None,
         "function_string" : """
-async def file_chooser(node):
+def file_chooser(node):
     print(node, node.node_id, node.output_args)
     if node.trigger_in.startswith("display_output"):
         node.output_args = {"user_image" : None}
@@ -2134,8 +2669,10 @@ async def file_chooser(node):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "dir" : "string"
         }
     },
@@ -2143,7 +2680,7 @@ async def file_chooser(node):
         "function_name": "image_chooser",
         "import_string" : None,
         "function_string" : """
-async def image_chooser(node):
+def image_chooser(node):
     print(node, node.node_id, node.output_args)
     if node.trigger_in.startswith("display_output"):
         node.output_args = {"user_image" : None}
@@ -2167,32 +2704,18 @@ async def image_chooser(node):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "user_image" : "string"
         }
     },
-    "ignition" : {
-            "function_name": "ignition",
-            "import_string" : None,
-            "function_string" : """
-async def ignition(node):
-    print("Ignition")
-    await asyncio.sleep(.25)
-    return None
-            """,
-            "description" : None,
-            "documentation" : None,
-            "inputs" : {
-            },
-            "outputs": {
-            }
-        },
     "display_output" : {
         "function_name": "display_output",
         "import_string" : None,
         "function_string" : """
-async def display_output(node, user_input=None, output=None, instruct_type=None, generated_image_path=None, user_image=None):
+def display_output(node, user_input=None, output=None, instruct_type=None, generated_image_path=None, user_image=None):
     app = MDApp.get_running_app()
     print("Display Output: ", user_input, output)
     user_text = user_input or "test"
@@ -2227,13 +2750,15 @@ async def display_output(node, user_input=None, output=None, instruct_type=None,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "user_input" : "string",
             "output" : "string",
             "instruct_type" : "num",
             "generated_image_path" : "string",
             "user_image" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
 
@@ -2241,7 +2766,7 @@ async def display_output(node, user_input=None, output=None, instruct_type=None,
             "function_name": "select_model",
             "import_string" : None,
             "function_string" : """
-async def select_model(node):
+def select_model(node):
     print("select_model")
     await asyncio.sleep(.25)
     return None
@@ -2249,8 +2774,10 @@ async def select_model(node):
             "description" : None,
             "documentation" : None,
             "inputs" : {
+			"user_id" : "string",
             },
-            "outputs": {
+            "outputs" : {
+			"user_id" : "string",
                 "model" : "string",
             }
         },
@@ -2258,7 +2785,7 @@ async def select_model(node):
             "function_name": "user_input",
             "import_string" : None,
             "function_string" : '''
-async def user_input(node):
+def user_input(node):
     try:
         global spoken
         print("Spoken: ", spoken)
@@ -2280,8 +2807,10 @@ async def user_input(node):
             "description" : None,
             "documentation" : None,
             "inputs" : {
+			"user_id" : "string",
             },
-            "outputs": {
+            "outputs" : {
+			"user_id" : "string",
                 "user_input" : "string",
             }
         },
@@ -2289,21 +2818,23 @@ async def user_input(node):
             "function_name": "pass_node",
             "import_string" : None,
             "function_string" : """
-async def pass_node(node):
+def pass_node(node):
     return None
             """,
             "description" : None,
             "documentation" : None,
             "inputs" : {
+			"user_id" : "string",
             },
-            "outputs": {
+            "outputs" : {
+			"user_id" : "string",
             }
         },
     "context" : {
             "function_name": "context",
             "import_string" : None,
             "function_string" : """
-async def context(node):
+def context(node):
     print("context")
     await asyncio.sleep(.25)
     return None
@@ -2311,8 +2842,10 @@ async def context(node):
             "description" : None,
             "documentation" : None,
             "inputs" : {
+			"user_id" : "string",
             },
-            "outputs": {
+            "outputs" : {
+			"user_id" : "string",
                 "context" : "string",
             }
         },
@@ -2320,30 +2853,34 @@ async def context(node):
             "function_name": "reset_outputs",
             "import_string" : None,
             "function_string" : """
-async def reset_outputs(node):
+def reset_outputs(node):
     return None
             """,
             "description" : None,
             "documentation" : None,
             "inputs" : {
+			"user_id" : "string",
             },
-            "outputs": {
+            "outputs" : {
+			"user_id" : "string",
             }
         },
     "is_greater_than" : {
         "function_name": "is_greater_than",
         "import_string" : None,
         "function_string" : """
-async def is_greater_than(node, A=None, B=None):
+def is_greater_than(node, A=None, B=None):
     return {"is_greater_than" : A > B}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "A" : "bool",
             "B" : "bool"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "is_greater_than" : "bool"
         }
     },
@@ -2351,16 +2888,18 @@ async def is_greater_than(node, A=None, B=None):
         "function_name": "is_less_than",
         "import_string" : None,
         "function_string" : """
-async def is_less_than(node, A=None, B=None):
+def is_less_than(node, A=None, B=None):
     return {"is_less_than" : A < B}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "A" : "bool",
             "B" : "bool"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "is_less_than" : "bool"
         }
     },
@@ -2368,16 +2907,18 @@ async def is_less_than(node, A=None, B=None):
         "function_name": "is_equal",
         "import_string" : None,
         "function_string" : """
-async def is_equal(node, A=None, B=None):
+def is_equal(node, A=None, B=None):
     return {"is_equal" : A == B}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "A" : "bool",
             "B" : "bool"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "is_equal" : "bool"
         }
     },
@@ -2385,10 +2926,13 @@ async def is_equal(node, A=None, B=None):
         "function_name": "get_instruct_type_node",
         "import_string" : None,
         "function_string" : '''
-async def get_instruct_type_node(node, user_input=None, context=None):
+def get_instruct_type_node(node, user_id=None, user_input=None, context=None):
     # Input text containing the Python code block
-    print("Running get instruct type")
+    #print("Running get instruct type")
     asyncio.sleep(0.1)
+    if user_id == None:
+        node.stop = True
+        return {"instruct_type" : 0}
     if user_input == None:
         return {"instruct_type" : 0}
     generate_code = (
@@ -2404,11 +2948,16 @@ async def get_instruct_type_node(node, user_input=None, context=None):
         "Format: instruct type:<number>"
     )
     message_array = []
-    message_array.append({"role": "system", "content": "Your role is to decide what the instruct type to use based on the user intent."})
+    message_array.append({"role": "system", "content": "Your role is to decide what the instruct type to use based on the user intent. "})
     message_array.append({"role": "user", "content": generate_code})
     if context:
         message_array.append({"role": "context", "content": context})
-    chat_completion = client.chat.completions.create(
+    global TOGETHER_API_KEY
+    client_for_instruct = OpenAI(
+      api_key=TOGETHER_API_KEY,
+      base_url='https://api.together.xyz/v1',
+    )
+    chat_completion = client_for_instruct.chat.completions.create(
       messages=message_array,
       model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
     )
@@ -2428,15 +2977,18 @@ async def get_instruct_type_node(node, user_input=None, context=None):
         print("instruct_type not found in the data")
     #instruct_type = int(response)
     print("Bot: ", response)
-    return {"instruct_type" : instruct_type}
+    return {"user_id" : user_id, "instruct_type" : instruct_type, "message" : user_input}
         ''',
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "user_input" : "string",
             "context" : "string"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
+            "message" : "string",
             "instruct_type" : "num",
         }
     },
@@ -2444,7 +2996,7 @@ async def get_instruct_type_node(node, user_input=None, context=None):
         "function_name": "generate_image_prompt",
         "import_string" : None,
         "function_string" : """
-async def generate_image_prompt(node, model=None, user_input=None, context=None, instruct_type=None):
+def generate_image_prompt(node, model=None, user_input=None, context=None, instruct_type=None):
     app = MDApp.get_running_app()
     print("Prompt")
     user_text = user_input
@@ -2453,19 +3005,21 @@ async def generate_image_prompt(node, model=None, user_input=None, context=None,
         print("context: ", context)
     generated_image_path = ""
     # Continue the conversation            
-    response = app.continue_conversation(user_text=user_text, context=context)
+    response = app.continue_conversation(user_text=user_text, context=context, user_id=user_id)
     print("output: ", response)
     return {"output" : response, "generated_image_path" : generated_image_path}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "model" : "string",
             "user_input" : "string", 
             "instruct_type" : "num",
             "context" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "output" : "string",
             "instruct_type" : "num",
         }
@@ -2474,45 +3028,53 @@ async def generate_image_prompt(node, model=None, user_input=None, context=None,
         "function_name": "is_normal_prompt",
         "import_string" : None,
         "function_string" : """
-async def is_normal_prompt(node, instruct_type=None):
-    if not instruct_type == 1:
-        node.stop = True
-    return None
+def is_normal_prompt(node, user_id=None, message=None, instruct_type=None):
+    print("Printed instruct: ", instruct_type)
+    #if not instruct_type == 1:
+        #node.stop = True
+        #pass
+    print("Ran is normal, message: ", message)
+    return {"user_id" : user_id, "message" : message}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
+            "message" : "string",
             "instruct_type" : "num",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
+            "message" : "string",
         }
     },
     "prompt" : {
         "function_name": "prompt",
         "import_string" : None,
         "function_string" : """
-async def prompt(node, model=None, user_input=None, context=None, instruct_type=None):
+def prompt(node, user_id=None, model=None, user_input=None, context=None, instruct_type=None):
     app = MDApp.get_running_app()
-    
-    print("Prompt")
+    print("Ran Prompt")
     print(model, user_input, context)
     user_text = user_input
     # Continue the conversation
     if context:
         context = "Context: " + context
-    response = app.continue_conversation(user_text=user_text, context=context)
+    response = app.continue_conversation(user_text=user_text, context=context, user_id=user_id)
     print("output: ", response)
-    return {"output" : response}
+    return {"user_id" : user_id, "output" : response}
         """,
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "model" : "string",
             "user_input" : "string", 
             "instruct_type" : "num",
             "context" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "output" : "string",
         }
     },
@@ -2520,7 +3082,7 @@ async def prompt(node, model=None, user_input=None, context=None, instruct_type=
         "function_name": "image_to_text",
         "import_string" : None,
         "function_string" : """
-async def image_to_text(node, user_image=None):
+def image_to_text(node, user_image=None):
     if user_image:
         # Load the image using PIL
         print(user_image)
@@ -2581,9 +3143,11 @@ async def image_to_text(node, user_image=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "user_image" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "output_text" : "string",
         }
     },
@@ -2591,7 +3155,7 @@ async def image_to_text(node, user_image=None):
         "function_name": "translate_language",
         "import_string" : None,
         "function_string" : """
-async def translate_language(node, input_text=None, input_language=None, output_language="English"):
+def translate_language(node, input_text=None, input_language=None, output_language="English"):
     if input_text:
         if input_language != output_language:
             global cohere_api_key
@@ -2616,11 +3180,13 @@ async def translate_language(node, input_text=None, input_language=None, output_
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "input_text" : "string",
             "input_language" : "string",
             "output_language" : "string"
          },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "output_text" : "string",
         }
     },
@@ -2628,7 +3194,7 @@ async def translate_language(node, input_text=None, input_language=None, output_
         "function_name": "detect_language",
         "import_string" : None,
         "function_string" : """
-async def detect_language(node, input_text=None):
+def detect_language(node, input_text=None):
     if input_text:
         try:
             co = cohere.Client(cohere_api_key) # This is your trial API key
@@ -2657,9 +3223,11 @@ async def detect_language(node, input_text=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "input_text" : "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "language" : "string",
         }
     },
@@ -2667,7 +3235,7 @@ async def detect_language(node, input_text=None):
         "function_name": "delay",
         "import_string" : None,
         "function_string" : """
-async def delay(node, delay_seconds=None):
+def delay(node, delay_seconds=None):
     if node.trigger_in.startswith("time_delta_seconds"):
         
         asyncio.sleep(delay_seconds)
@@ -2678,16 +3246,18 @@ async def delay(node, delay_seconds=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "delay_seconds": "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
         }
     },
     "time_delta_seconds_from_now" : {
         "function_name": "time_delta_seconds",
         "import_string" : None,
         "function_string" : """
-async def time_delta_seconds(node, given_date_time_str):
+def time_delta_seconds(node, given_date_time_str):
     now = datetime.now()
     
     # Given date and time
@@ -2704,9 +3274,11 @@ async def time_delta_seconds(node, given_date_time_str):
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "given_date_time_str": "string",
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "seconds" : "num",
         }
     },
@@ -2714,7 +3286,7 @@ async def time_delta_seconds(node, given_date_time_str):
         "function_name": "decide_output_language",
         "import_string" : None,
         "function_string" : """
-async def decide_output_language(node, user_language=None, listener_language=None, user_prompt=None, user_info=None, listener_info=None):
+def decide_output_language(node, user_language=None, listener_language=None, user_prompt=None, user_info=None, listener_info=None):
     if input_text:
         try:
             language_code = detect(user_prompt)
@@ -2729,17 +3301,18 @@ async def decide_output_language(node, user_language=None, listener_language=Non
         "description" : None,
         "documentation" : None,
         "inputs" : {
+			"user_id" : "string",
             "user_prompt": "string",
             "user_language": "string",
             "user_info": "string",
             "listener_language": "string",
             "listener_info": "string"
         },
-        "outputs": {
+        "outputs" : {
+			"user_id" : "string",
             "language" : "string",
         }
-    },
-    
+    },   
 }
 
 #node_init = {}
@@ -3193,6 +3766,7 @@ KV = '''
 ScreenManager:
     id: screen_manager
     DraggableLabelScreen:
+    LoraTrainerScreen:
     ChatboxScreen:
     SelectNodeScreen:
     RenderScreen:
@@ -3200,7 +3774,6 @@ ScreenManager:
     WidgetTreeScreen:
     SelectAppScreen:
     MapScreen:
-    LoraTrainerScreen:
 '''
 
 import math
@@ -3479,6 +4052,15 @@ class DraggableMapScreen(FloatLayout):
         lat = math.degrees(math.atan(math.sinh(y / R))) - .001
 
         return lat, lon  # Return latitude and longitude in degrees
+    def total_route_distance(self, route_coords):
+        total_distance = 0.0
+        for i in range(len(route_coords) - 1):
+            lat1, lon1 = route_coords[i]
+            lat2, lon2 = route_coords[i + 1]
+            segment_distance = self.haversine_distance(lat1, lon1, lat2, lon2)
+            total_distance += segment_distance
+            print(i, total_distance)
+        return total_distance
     def on_touch_down(self, touch):
         global global_offset
         for child in self.children:
@@ -3541,12 +4123,48 @@ class DraggableMapScreen(FloatLayout):
                             lon = nearest_place.get("lon", "Unknown")
                             print(f"Nearest Place: {name} ({lat}, {lon}) - {street}")
                             
+                            # Calculate distance using the haversine formula
+                            distance_km = self.haversine_distance(latitude, longitude, lat, lon)
+                            
+                            # Print the distance
+                            print(f"Nearest Place: {name} ({lat}, {lon}) - {street}")
+                            print(f"Distance to nearest place: {distance_km:.2f} km")
+                            
                             lines_arr_points = []
                             try:
                                 self.add_circle(lat, lon, 16, 2)  # Add a circle at the nearest place location
                                 route_coords, G, route = self.get_route_coords((latitude, longitude), (lat,lon))
                                 # Define the projection from WGS 84 to Web Mercator (EPSG:3857)
+                                
+                                # Calculate total distance and time
+                                total_distance_m = 0  # Total distance in meters
+                                total_travel_time_sec = 0  # Total travel time in seconds
 
+                                for u, v, key, edge_data in G.edges(keys=True, data=True):
+                                    # Get the maxspeed for this edge, if available
+                                    maxspeed = edge_data.get('maxspeed', 'Not available')
+                                    
+                                    # If 'maxspeed' is a list (which sometimes it is), print it as a string
+                                    if isinstance(maxspeed, list):
+                                        maxspeed = ', '.join(map(str, maxspeed))
+                                    
+                                    # Print the edge and its maxspeed
+                                    print(f"Edge ({u}, {v}) - Maxspeed: {maxspeed}")
+                                
+                                print("Printing Route")
+                                print(route)
+                                
+                                distance_km = self.total_route_distance(route_coords)
+                                print(f"Total route distance: {distance_km:.2f} km")
+                                # Calculate the travel time based on the route data
+                                # Assuming `route` contains the total travel time (in seconds), otherwise, you will need to modify this
+                                """
+                                travel_time_sec = sum([edge['travel_time'] for edge in route])
+                                travel_time_min = travel_time_sec / 60
+                                
+                                # Print the travel time
+                                print(f"Estimated travel time: {travel_time_min:.2f} minutes")
+                                """
                                 for coords in route_coords:
                                     try:
                                         #x, y = self.wgs84_to_web_mercator(coords[0], coords[1])
@@ -3658,7 +4276,6 @@ def lat_lon_to_tile_pixel(latitude, longitude, zoom):
     y_tile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
     return x_tile, y_tile
 
-
 def lat_lon_to_tile_pixel_with_pixel(latitude, longitude, zoom):
     # Calculate the number of tiles at the given zoom level
     n = 2.0 ** zoom
@@ -3763,13 +4380,13 @@ class MapScreen(Screen):
                 try:
                     # Your existing code here...
                     print("someasync: ", async_nodes[i].trigger_out, i)
-                    tasks.append(asyncio.create_task(async_nodes[i].trigger()))
+                    async_nodes[i].trigger()
                     
                     # Your existing code here...
                 except RecursionError:
                     print("Maximum recursion depth reached. Stopping program.")
                     # Additional cleanup or handling here if needed
-        await asyncio.gather(*tasks)
+        
         
     def on_run_press_wrapper(self, instance, node):
         def run_coroutine_in_event_loop():
@@ -3863,10 +4480,11 @@ class LoraTrainerScreen(Screen):
         
         # Your Hugging Face token
         HF_TOKEN = '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'  # Replace with your actual Hugging Face token
-
+        try:
         # Authenticate with Hugging Face
-        login(token=HF_TOKEN)
-        
+            login(token=HF_TOKEN)
+        except:
+            pass
         # Existing DataFrame
         self.new_data = pd.DataFrame({
             'prompt': []
@@ -3950,6 +4568,29 @@ class LoraTrainerScreen(Screen):
         
         # Add the screen layout to the screen
         self.add_widget(screen_layout)
+    async def on_run_press(self, node):
+        #print("Run Pressed")
+        # Search for ignition nodes and trigger them once.
+        tasks = []
+        print("Running: ", node)
+        for i in node_info:
+            if node_info[i]["name"] == node:
+                #print(i, async_nodes[i])
+                try:
+                    # Your existing code here...
+                    print("someasync: ", async_nodes[i].trigger_out, i)
+                    async_nodes[i].trigger()
+                    
+                    # Your existing code here...
+                except RecursionError:
+                    print("Maximum recursion depth reached. Stopping program.")
+                    # Additional cleanup or handling here if needed
+        
+    def on_run_press_wrapper(self, instance):
+        def run_coroutine_in_event_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.on_run_press())
     def back_button_on_press(self, instance):
         app = App.get_running_app()
         self.manager.current = 'draggable_label_screen'
@@ -4342,7 +4983,6 @@ class SelectNodeScreen(Screen):
 class ChatboxScreen(Screen):
     pass
 
-
 class CustomImageComponent(BoxLayout):
     def __init__(self, img_source="", **kwargs):
         super(CustomImageComponent, self).__init__(**kwargs)
@@ -4410,7 +5050,9 @@ class MyTreeView(TreeView):
         if node and hasattr(node, 'widget_ref'):
             widget_ref = node.widget_ref
             self.widget_tree_screen.display_widget_properties(widget_ref)
+
 button_nodes = {}
+
 class WidgetTreeScreen(Screen):
     def __init__(self, widget_tree=None, **kwargs):
         super().__init__(**kwargs)
@@ -4879,13 +5521,13 @@ print(\"Added\", {function_name})
                 try:
                     # Your existing code here...
                     print("someasync: ", async_nodes[i].trigger_out, i)
-                    tasks.append(asyncio.create_task(async_nodes[i].trigger()))
+                    async_nodes[i].trigger()
                     
                     # Your existing code here...
                 except RecursionError:
                     print("Maximum recursion depth reached. Stopping program.")
                     # Additional cleanup or handling here if needed
-        await asyncio.gather(*tasks)
+        #await asyncio.gather(*tasks)
         
     def on_run_press_wrapper(self, instance):
         def run_coroutine_in_event_loop():
@@ -4915,7 +5557,7 @@ print(\"Added\", {function_name})
         self.manager.current = 'select_app_screen'
         
 class DraggableLabelApp(MDApp):
-    past_messages = []
+    past_messages = {}
     def build(self):
         self.theme_cls.theme_style = 'Dark'
         return Builder.load_string(KV)
@@ -4941,7 +5583,6 @@ class DraggableLabelApp(MDApp):
         else:
             return now.strftime("%m/%d/%y %I:%M %p")
         
-
     def gemini_parse_message(self, message):
         formatted_text = message.replace("\\n", "\n")
         formatted_text = formatted_text.replace("\\", "")
@@ -4953,28 +5594,40 @@ class DraggableLabelApp(MDApp):
         #add_message("user", "Hello!")
     
     # Function to add a message to the list
-    def add_message(self, role, content):
-        self.past_messages.append({"role": role, "content": content})
+    def add_message(self, role, content, user_id=None):
+        if user_id not in self.past_messages:
+            self.past_messages[user_id] = []
+            #O1 does not support system
+            self.past_messages[user_id].append({
+                "role": "user",
+                "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."
+            })
+            
+        self.past_messages[user_id].append({"role": role, "content": content})
         if role == "user":
             print(f"User: {content}")
-        
+    
     # Function to continue the conversation
-    def continue_conversation(self, model=None, user_text=None, context=None):
+    def continue_conversation(self, model=None, user_text=None, context=None, user_id=None):
         #print(past_messages)
         # Create the chat completion request with updated past messages
-        self.add_message("user", user_text)
+        self.add_message("user", user_text, user_id)
         if context:
             print("Adding context: ", context)
-            self.add_message("user", context)
+            self.add_message("user", context, user_id)
         chat_completion = client.chat.completions.create(
-          messages=self.past_messages,
-          model=model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+          messages=self.past_messages[user_id],
+          model= model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",#"o1-preview",#
+          max_tokens=1000,
         )
-        print(self.past_messages)
+        #print(self.past_messages)
         response = chat_completion.choices[0].message.content
         # Update the past messages list with the new chat completion
+        print("Response: ", response)
+        print("Chat completion", chat_completion)
         response = response.replace("\\_", "_")
-        self.add_message("assistant", response)
+        print(response)
+        self.add_message("assistant", response, user_id)
 
         # Print the assistant's response
         print("Bot: ", response)
@@ -5010,14 +5663,13 @@ class DraggableLabelApp(MDApp):
 
         # Find all matches of the pattern in the input text
         matches = re.findall(pattern, input_text, re.DOTALL)
-
+        
         # Extract the Python code block from the matches
         python_code = matches[0] if matches else None
 
         # Print the extracted Python code
         print(python_code)
         return python_code
-        
     
     def prepare_code(self, input_text):
         # Input text containing the Python code block
@@ -5146,7 +5798,7 @@ class DraggableLabelApp(MDApp):
                 try:
                     # Your existing code here...
                     print("someasync: ", async_nodes[i].trigger_out, i)
-                    await async_nodes[i].trigger()
+                    async_nodes[i].trigger()
                     
                     # Your existing code here...
                 except RecursionError:
@@ -5169,6 +5821,7 @@ class DraggableLabelApp(MDApp):
         use_model = "together"
         if use_model == "gemini":
             """
+            model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(user_text)
             result = str(response._result)
             parsed_result = self.gemini_parse_results(result)
