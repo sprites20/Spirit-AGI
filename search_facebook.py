@@ -4,6 +4,7 @@ from pyppeteer import launch
 from urllib.parse import quote
 import re
 
+browser = None
 async def get_href(query):
     async def goto_more(page):
         await page.waitForSelector('.bi.bj')
@@ -68,13 +69,20 @@ async def get_href(query):
         }''')
 
         hrefs = list(set(hrefs))
+        '''
         for href in hrefs:
             print('href:', href)
+        '''
         return hrefs
 
+    global browser
     browser = await launch(headless=False, userDataDir='./userdata')
     page = await browser.newPage()
-
+    
+    # Set custom user agent
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0'
+    await page.setUserAgent(user_agent)
+    
     await page.setRequestInterception(True)
     page.on('request', lambda req: asyncio.ensure_future(req.abort()) if req.resourceType == 'image' else asyncio.ensure_future(req.continue_()))
 
@@ -94,7 +102,7 @@ async def get_href(query):
     #print("Gotten")
 
     await browser.close()
-    print(results)
+    #print(results)
     return results
 
     results = []
@@ -105,6 +113,10 @@ async def get_href(query):
             await extract_text(page)
         except Exception as e:
             print(e)
+    return results
+
+if __name__ == "__main__":
+    import sys
+    query = sys.argv[1]# if len(sys.argv) > 1 else "World"
+    print(asyncio.get_event_loop().run_until_complete(get_href(query)))
     
-    await browser.close()
-    #return results
