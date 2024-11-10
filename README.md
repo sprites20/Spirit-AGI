@@ -1,3 +1,4 @@
+Added Kuka Model and pybullet for robotics
 Added dataset upload to HuggingFace for LORA instruct fine-tuning.
 
 LORA Trainer (To be fixed): https://colab.research.google.com/gist/sprites20/49b218d8cb79a44e94055ab372ea4326/untitled18.ipynb
