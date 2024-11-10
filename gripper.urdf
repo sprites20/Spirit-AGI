@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<robot name="visual">
+<!-- E. Culurciello, March 2021 -->
+<!-- basic 2-fingers gripper -->
+  <link name="base">
+  <inertial>
+    <mass value="1"/>
+    <inertia ixx="100" ixy="0" ixz="0" iyy="100" iyz="0" izz="100" />
+    <origin/>
+  </inertial>
+    <visual>
+      <geometry>
+        <box size="0.4 .1 .1"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 -0.1 0"/>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  <collision>
+      <origin rpy="0 0 0" xyz="0 -0.1 0"/>
+    <geometry>
+        <box size="0.3 .1 .3"/>
+    </geometry>
+    <contact_coefficients mu="0" kp="1000.0" kd="1.0"/>
+  </collision>
+  </link>
+
+  <link name="left_fingertip">
+  <inertial>
+    <mass value="1"/>
+    <inertia ixx="100" ixy="0" ixz="0" iyy="100" iyz="0" izz="100" />
+    <origin/>
+  </inertial>
+    <visual>
+      <geometry>
+        <box size="0.1 .4 .1"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+        <box size="0.1 .4 .1"/>
+    </geometry>
+    <contact_coefficients mu="0" kp="1000.0" kd="1.0"/>
+  </collision>
+  </link>
+
+  <joint name="base_to_left_fingertip" type="prismatic">
+    <axis xyz="1 0 0"/>
+    <limit effort="1.0" lower="0" upper="0.3" velocity="0.5"/>
+    <parent link="base"/>
+    <child link="left_fingertip"/>
+    <origin xyz="-0.15 -0.35 0.0"/>
+  </joint>
+
+  <link name="right_fingertip">
+  <inertial>
+    <mass value="1"/>
+    <inertia ixx="100" ixy="0" ixz="0" iyy="100" iyz="0" izz="100" />
+    <origin/>
+  </inertial>
+    <visual>
+      <geometry>
+        <box size="0.1 .4 .1"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  <collision>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+    <geometry>
+        <box size="0.1 .4 .1"/>
+    </geometry>
+    <contact_coefficients mu="0" kp="1000.0" kd="1.0"/>
+  </collision>
+  </link>
+
+  <joint name="base_to_right_fingertip" type="prismatic">
+    <axis xyz="1 0 0"/>
+    <limit effort="1.0" lower="-0.3" upper="0.0" velocity="0.5"/>
+    <parent link="base"/>
+    <child link="right_fingertip"/>
+    <origin xyz="0.15 -0.35 -0.0"/>
+  </joint>
+
+</robot>
