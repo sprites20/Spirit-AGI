@@ -62,6 +62,7 @@ from kivy.config import Config
 from kivy.lang import Builder
 
 from kivymd.app import MDApp
+from kivymd.uix.button import MDIconButton
 
 from kivy.uix.behaviors import DragBehavior
 from kivy.uix.boxlayout import BoxLayout
@@ -76,19 +77,24 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.treeview import TreeView, TreeViewLabel
 from kivy.uix.popup import Popup
 from kivy.uix.image import Image
+from kivy.uix.slider import Slider
 from kivy.uix.togglebutton import ToggleButton
-
-from kivymd.uix.button import MDIconButton
+from kivy.uix.codeinput import CodeInput
 
 from kivy.resources import resource_find
+
 from kivy.graphics.transformation import Matrix
 from kivy.graphics.opengl import glEnable, glDisable, GL_DEPTH_TEST, glCullFace, GL_BACK
 from kivy.graphics import RenderContext, Callback, PushMatrix, PopMatrix, \
     Color, Translate, Rotate, Mesh, UpdateNormalMatrix, BindTexture, Rectangle, Ellipse, Line
-from kivy.uix.codeinput import CodeInput
+from kivy.graphics.texture import Texture
+
 from kivy.properties import Property
+from kivy.properties import NumericProperty
+
 from objloader import ObjFile
-from tkinter import Tk, filedialog
+import tkinter as tk
+from tkinter import filedialog
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.properties import NumericProperty
@@ -102,6 +108,7 @@ import math
 import os
 import requests
 import asyncio
+import shutil
 from functools import partial
 #from pyppeteer import launch
 import base64
@@ -110,7 +117,7 @@ from geopy.geocoders import Nominatim
 import osmnx as ox
 import networkx as nx
 import matplotlib.pyplot as plt
-
+import duckdb
 from pyproj import Proj, transform
 
 from pygments.lexers import PythonLexer
@@ -148,17 +155,21 @@ import requests
 import threading
 import copy
 from pathlib import Path
+import traceback
+
+import pybullet as p
+import pybullet_data
 
 from pyppeteer import launch
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import pytesseract
 import cv2
 
 import ast
 
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+#from mistralai.client import MistralClient
+#from mistralai.models.chat_completion import ChatMessage
 
 import cohere
 
@@ -192,20 +203,28 @@ service_context = ServiceContext.from_defaults(
 user_prompt = "Function to print nth fibonacci number."
 
 TOGETHER_API_KEY = "4070baa3baed3400f79377ea3b4221f2024725f970bbf02dd0b6d4fba2175bc6"
-"""
+
 client = OpenAI(
   api_key=TOGETHER_API_KEY,
   base_url='https://api.together.xyz/v1',
 )
+
+client_for_instruct = OpenAI(
+      api_key=TOGETHER_API_KEY,
+      base_url='https://api.together.xyz/v1',
+)
+
 """
 client = OpenAI(
     api_key="95375458de2544cfb665366052759dbb",
     base_url="https://api.aimlapi.com",
 )
+"""
 
+"""
 MISTRAL_API_KEY = "VuNE7EzbFp5QA0zoYl0LokvrTitF7yrg"
 client_mistral = MistralClient(api_key=MISTRAL_API_KEY)
-
+"""
 """
 genai.configure(api_key='AIzaSyDc0qXo8TxNxv7xAksgwdWtP0Fl1ai6heg')
 model = genai.GenerativeModel('gemini-pro')
@@ -300,6 +319,7 @@ def generate_documentation(code_path):
         with open(file_path, "w") as file:
             file.write(text_to_write)
 
+            
 class NewNodeScreen(Screen):
     def __init__(self, **kwargs):
         super(NewNodeScreen, self).__init__(**kwargs)
@@ -757,7 +777,7 @@ class RenderScreen(Screen):
         nodes[self.node_id].label_color.rgba = (0.5, 0.5, 0.5, 1)
 
 class AsyncNode:
-    def __init__(self, function_name=None, node_id=None, input_addresses=[], output_args={}, trigger_out=[]):
+    def __init__(self, function_name=None, node_id=None, input_addresses=[], output_args=None, trigger_out=[]):
         self.trigger_in = None
         self.trigger_out = []
         self.function_name = function_name
@@ -766,7 +786,7 @@ class AsyncNode:
         self.trigger_out_taken = []
         self.output_args = {}
         self.node_id = node_id
-        self.stop = False
+        self.stop = {}
         self.args = {}
         self.trigger_out_callbacks = 0
         self.callbacks = {}
@@ -792,20 +812,28 @@ class AsyncNode:
             self.callbacks[user_id] = True
 
     def trigger(self, node=None, node_id=None, callback=None, user_id=None):
+        # Change color to red
+        Clock.schedule_once(lambda dt: self.change_to_red(), 0)
+        
         user_id = user_id or "user"
+        
         if user_id not in self.output_args:
             self.output_args[user_id] = {}
-
+        
+        try:
+            if user_id not in self.stop:
+                #print("Not in stop")
+                self.stop[user_id] = False
+        except Exception as e:
+            print(e, "\n", user_id)
+        #print(user_id, self.stop[user_id])
         if self.trigger_in:
             if self.trigger_in.startswith("stop_after"):
-                self.stop = True
+                self.stop[user_id] = True
             elif self.trigger_in.startswith("reset_outputs"):
                 self.output_args[user_id].clear()  # Clear outputs for reset
                 return None
-        
-        # Change color to red
-        Clock.schedule_once(lambda dt: self.change_to_red(), 0)
-
+                    
         # Get input arguments
         input_args = {}
         for address in self.input_addresses:
@@ -814,17 +842,24 @@ class AsyncNode:
             target = address.get("target")
             try:
                 input_args[target] = node.output_args[user_id].get(arg_name)
-            except Exception as e:
-                print(node, arg_name, target, e)
-
+            except Exception as error:
+                if user_id not in node.output_args:
+                    node.output_args[user_id] = {}
+                input_args[target] = None
+                print("Error: ", error)
+                print(node, arg_name, target, user_id, error)
+                
+                # Print the traceback for more details on where the error occurred
+                traceback.print_exc()
         if self.function_to_call:
             function_done = threading.Event()  # Event to signal function completion
             #function_done.clear()  # Clear the event before running the function
-
+            
             # Create a separate thread for the function call
             def run_function():
                 output_args = self.function_to_call(self, **input_args) or {}
                 self.output_args[user_id] = output_args
+                
                 # Change color to gray after processing
                 Clock.schedule_once(lambda dt: self.change_to_gray(), 0)
                 # Wait for the function to finish before continuing
@@ -836,11 +871,30 @@ class AsyncNode:
             thread.start()
 
             function_done.wait()  # Block until the function is complete
-        if not self.stop:
+        
+        for address in self.input_addresses:
+            node = address.get("node")
+            arg_name = address.get("arg_name")
+            target = address.get("target")
+            if arg_name == "user_id":
+                try:
+                    user_id = node.output_args[user_id].get(arg_name) or "user"
+                    break
+                except:
+                    user_id = "user"
+                    pass
+        try:
+            if user_id not in self.stop:
+                #print(f"User Id {user_id} not in stop")
+                self.stop[user_id] = False
+        except Exception as e:
+            print(e, "\n", user_id)
+        
+        if not self.stop[user_id]:
+            #print(user_id, "Stopped?",self.stop[user_id])
             for node_to_run in self.trigger_out:
                 self.trigger_node(node=node_to_run, user_id=user_id)
-
-        self.stop = False  # Reset the stop condition if needed
+        self.stop[user_id] = False  # Reset the stop condition if needed
     """
     async def trigger(self, node=None, node_id = None, callback=None, user_id=None):
         user_id = user_id or "user"
@@ -1244,7 +1298,7 @@ class DraggableLabel(DragBehavior, Label):
         self.size_hint = (None, None)
         self.size_x = 200
         self.size = (self.size_x, 50)
-        self.bottom_rect_size = (self.size_x, 20 + 16 * max(len(self.outputs), len(self.inputs)))
+        self.bottom_rect_size = (self.size_x, 20 + 20 * max(len(self.outputs), len(self.inputs)))
         
         self.initialized = False
 
@@ -1345,8 +1399,8 @@ class DraggableLabel(DragBehavior, Label):
         #self.label_rect.pos = 
         self.label_rect.size = self.size
         
-        self.box_rect.pos = (self.offsetted_pos[0], self.offsetted_pos[1] - (20 + 16 * max(len(self.outputs), len(self.inputs))))
-        self.box_rect.size = (self.width, 20 + 16 * max(len(self.outputs), len(self.inputs)))
+        self.box_rect.pos = (self.offsetted_pos[0], self.offsetted_pos[1] - (20 + 20 * max(len(self.outputs), len(self.inputs))))
+        self.box_rect.size = (self.width, 20 + 20 * max(len(self.outputs), len(self.inputs)))
         # Update the positions of the input and output circles
         self.input_circle_pos = (self.offsetted_pos[0] - 3, self.offsetted_pos[1] + self.height / 2 - 5)
         self.output_circle_pos = (self.right - 7, self.offsetted_pos[1] + self.height / 2 - 5)
@@ -1489,8 +1543,8 @@ class DraggableLabel(DragBehavior, Label):
             #self.label_rect.pos = 
             self.label_rect.size = self.size
             
-            self.box_rect.pos = (temp_pos[0], temp_pos[1] - (20 + 16 * max(len(self.outputs), len(self.inputs))))
-            self.box_rect.size = (self.width, 20 + 16 * max(len(self.outputs), len(self.inputs)))
+            self.box_rect.pos = (temp_pos[0], temp_pos[1] - (20 + 20 * max(len(self.outputs), len(self.inputs))))
+            self.box_rect.size = (self.width, 20 + 20 * max(len(self.outputs), len(self.inputs)))
             # Update the positions of the input and output circles
             self.input_circle_pos = (temp_pos[0] - 3, temp_pos[1] + self.height / 2 - 5)
             self.output_circle_pos = (self.right - 7, temp_pos[1] + self.height / 2 - 5)
@@ -1527,8 +1581,8 @@ class DraggableLabel(DragBehavior, Label):
             self.label_rect.pos = self.pos
             self.label_rect.size = self.size
             
-            self.box_rect.pos = (self.x, self.y - (20 + 16 * max(len(self.outputs), len(self.inputs))))
-            self.box_rect.size = (self.width, (20 + 16 * max(len(self.outputs), len(self.inputs))))
+            self.box_rect.pos = (self.x, self.y - (20 + 20 * max(len(self.outputs), len(self.inputs))))
+            self.box_rect.size = (self.width, (20 + 20 * max(len(self.outputs), len(self.inputs))))
             # Update the positions of the input and output circles
             self.input_circle_pos = (self.x - 3, self.y + self.height / 2 - 5)
             self.output_circle_pos = (self.right - 7, self.y + self.height / 2 - 5)
@@ -1563,8 +1617,8 @@ class DraggableLabel(DragBehavior, Label):
             self.label_rect.pos = self.pos
             self.label_rect.size = self.size
             
-            self.box_rect.pos = (self.x, self.y - (20 + 16 * max(len(self.outputs), len(self.inputs))))
-            self.box_rect.size = (self.width, (20 + 16 * max(len(self.outputs), len(self.inputs))))
+            self.box_rect.pos = (self.x, self.y - (20 + 20 * max(len(self.outputs), len(self.inputs))))
+            self.box_rect.size = (self.width, (20 + 20 * max(len(self.outputs), len(self.inputs))))
             
             # Update the positions of the input and output circles
             self.input_circle_pos = (self.x - 3, self.y + self.height / 2 - 5)
@@ -1747,7 +1801,7 @@ def save_dicts_as_json_files(data, output_directory):
             json.dump(value, f, indent=4)
 
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response, Response
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS  # Import CORS
 import os
@@ -1757,9 +1811,9 @@ import queue
 from pyngrok import ngrok  # Import pyngrok
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # For development, but consider restricting in production.
+CORS(app, resources={r"/*": {"origins": ["http://localhost:3000", "https://sprites20.github.io"]}})  # Restrict to your domain
 app.config['SECRET_KEY'] = 'your_secret_key'
-#socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Set a folder to store the uploaded files
 UPLOAD_FOLDER = 'uploads'
@@ -1769,6 +1823,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 clients = {}
 user_queues = queue.Queue()
 user_locks = threading.Lock()
+public_url = None
+conversations = {}  # Store conversations for users
 
 # Queue for connection events
 connection_queue = queue.Queue()
@@ -1778,10 +1834,8 @@ connection_lock = threading.Lock()
 def handle_connect():
     sid = request.sid
     user_id = request.args.get('user_id')
-    splitted = user_id.split("_")
-    timestamp = splitted[0]
-    user_id = splitted[1] + "_" + splitted[2]
     print(user_id)
+    #Should update the past messages by retrieving conversation ids, but first we should create if non exists
     with connection_lock:
         # Add connection request to the connection queue
         connection_queue.put((user_id, sid))
@@ -1790,12 +1844,14 @@ def handle_connect():
 def handle_disconnect():
     sid = request.sid
     user_id = None
+    app = MDApp.get_running_app()
     for uid, stored_sid in clients.items():
         if stored_sid == sid:
             user_id = uid
             break
     if user_id:
         del clients[user_id]
+        del app.past_messages[user_id]
         print(f"Client {user_id} disconnected")
 
 @socketio.on('client_event')
@@ -1803,18 +1859,29 @@ def handle_client_event(data):
     user_id = data.get('sender')
     message = data.get('text')
     image_url = data.get('image')
+    conversation_id = data.get('conversation_id')
     
     splitted = user_id.split("_")
     timestamp = splitted[0]
-    user_id = splitted[1] + "_" + splitted[2]
+    user_id = splitted[1]# + "_" + splitted[2]
     
     # Create a response data structure
     response_data = {
         'text': message,
         'image': image_url,
-        'sender': user_id
+        'sender': user_id,
+        'conversation_id': conversation_id,
     }
-    
+    # Save the message in the user's conversation
+    with user_locks:
+        if user_id not in conversations:
+            conversations[user_id] = {}
+        
+        if conversation_id not in conversations[user_id]:
+            conversations[user_id][conversation_id] = []
+        
+        conversations[user_id][conversation_id].append(response_data)  # Store the message
+        
     with user_locks:
         # Put the response data into the user's queue for processing
         user_queues.put(response_data)
@@ -1823,36 +1890,99 @@ def handle_client_event(data):
 # HTTP route to handle file upload
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    # Check if the request contains a file
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
     file = request.files['file']
     user_id = request.form.get('user_id')
 
+    # Check if the user ID is provided
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    # Check if the file has a valid filename
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
     if file:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        # Create the user's directory if it doesn't exist
+        user_folder = os.path.join(app.config['UPLOAD_FOLDER'])
+        os.makedirs(user_folder, exist_ok=True)
+
+        # Save the file in the user's folder
+        file_path = os.path.join(user_folder, file.filename)
         file.save(file_path)
         print(f"File {file.filename} uploaded by {user_id}")
-
+        global public_url
+        # Use regex to extract the Ngrok public URL and the local path
+        match = re.search(r'"(https?://[^\s]+)" -> "(http://localhost[^\s]+)"', str(public_url))
+        ngrok_public_url = None
+        if match:
+            ngrok_public_url = match.group(1)  # Extracts the Ngrok public URL
+        
         # Construct the URL for the uploaded file
-        file_url = f"http://localhost:5000/uploads/{file.filename}"
-        """
-        # Emit a message to the client with the file URL
-        if user_id in clients:
-            socketio.emit('server_response', {
-                'response': f"File {file.filename} uploaded successfully!",
-                'file_url': file_url  # Send the file URL
-            }, room=clients[user_id])
-        """
-        return jsonify({"message": "File uploaded successfully", "file_url": file_url}), 200
+        file_url = f"{ngrok_public_url}/uploads/{file.filename}"
 
+        # Return a success message with the file URL
+        return jsonify({"message": "File uploaded successfully", "file_url": file_url}), 200
+    
 # Serve uploaded images
-@app.route('/uploads/<filename>', methods=['GET'])
+@app.route('/uploads/<path:filename>')
 def serve_uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if filename.endswith(".mp4"):
+        filename = os.path.join("uploads", filename)
+        return serve_mp4_with_range(filename)
+    else:
+        response = make_response(send_from_directory(app.config['UPLOAD_FOLDER'], filename))
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0'
+        return response
+
+def serve_mp4_with_range(file_path):
+    print("Serving", file_path)
+    """Serve MP4 video with support for range requests (chunking)."""
+    file_size = os.path.getsize(file_path)
+    range_header = request.headers.get("Range", None)
+
+    if not range_header:
+        # No range request → Send full file
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return Response(data, status=200, content_type="video/mp4")
+
+    # **Handle range request for seeking**
+    try:
+        byte_range = range_header.split("=")[1]
+        start, end = byte_range.split("-")
+        start = int(start)
+        end = int(end) if end else start + (1024 * 1024)  # Default to 1MB chunks
+        end = min(end, file_size - 1)  # Avoid reading beyond file size
+    except ValueError:
+        return abort(400, "Invalid range request")
+
+    chunk_size = end - start + 1
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        data = f.read(chunk_size)
+
+    response = Response(data, status=206, content_type="video/mp4")
+    response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    response.headers["Accept-Ranges"] = "bytes"
+    response.headers["Content-Length"] = str(chunk_size)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0'
+    return response
+
+"""
+@app.route('/get_conversation_ids')
+def get_conversation_ids():
+    user_id = request.args.get('user_id')  # Get the user_id from query parameters
+
+    if user_id in conversations_db:
+        conversation_ids = conversations_db[user_id]  # Retrieve conversation IDs
+        return jsonify({"conversationIds": conversation_ids})  # Return as JSON
+    else:
+        return jsonify({"error": "User not found."}), 404  # Handle user not found case
+"""
 """
 def emit_back_to_client(user_id, response_data):
     sid = clients.get(user_id)
@@ -1862,9 +1992,37 @@ def emit_back_to_client(user_id, response_data):
         print(f"Client {user_id} is not connected")
 """
 
+@socketio.on('get_conversation_ids')
+def handle_get_conversation_ids(data):
+    user_id = data.get('user_id')
+    
+    global conversations
+    #If not exists create duckdb database
+    conversation_ids = list(conversations.get(user_id, {}).keys())
+    #print("Conversation ids: ", conversation_ids, conversations)
+    #We store conversation_ids of
+    
+    #Should retrieve 
+    emit('conversation_ids', {'conversationIds': conversation_ids})
+
+@socketio.on('get_past_messages')
+def handle_get_past_messages(data):
+    user_id = data['user_id']
+    
+    conversation_id = data['conversation_id']
+    global conversations
+    # Fetch past messages for the selected conversation
+    #If not exist 
+    past_messages = conversations.get(user_id, {}).get(conversation_id, [])
+    print("Past messages: ", user_id, conversation_id, past_messages, conversations)
+    # Send the past messages back to the client
+    #We gotta also load the conversation in the past_conversations also save it everytime a new message is recieved
+    #To do that we have to modify recieved message to save
+    emit('past_messages', past_messages)
+
 # GitHub API Configuration
-GITHUB_TOKEN = 'yeah'
-GITHUB_REPO = 'sprites20/Spirit-AGI'
+GITHUB_TOKEN = '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'
+GITHUB_REPO = 'sprites20/ngrok-links'
 GITHUB_BRANCH = 'main'
 NGROK_LINK_FILE_PATH = 'ngrok-link.json'
 
@@ -1877,6 +2035,7 @@ def file_exists():
     }
     response = requests.get(file_url, headers=headers)
     return response.status_code == 200
+
 # Function to create a new file in GitHub
 def create_file(public_url):
     file_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{NGROK_LINK_FILE_PATH}?ref={GITHUB_BRANCH}"
@@ -2006,7 +2165,8 @@ def update_ngrok_url_periodically():
 
     while True:
         # Open a new ngrok tunnel
-        public_url = ngrok.connect(5000)
+        global public_url
+        public_url = ngrok.connect(5000, bind_tls=True)
         print(f"ngrok tunnel \"{public_url}\" -> \"http://127.0.0.1:5000\"")
 
         # Update the ngrok link in GitHub
@@ -2029,12 +2189,11 @@ def run_server():
 
 
 
-"""
 # Start the ngrok URL update thread
 ngrok_update_thread = threading.Thread(target=update_ngrok_url_periodically)
 ngrok_update_thread.daemon = True
 ngrok_update_thread.start()
-"""
+
 # Start the server in a separate thread
 server_thread = threading.Thread(target=run_server)
 server_thread.daemon = True
@@ -2100,7 +2259,8 @@ def process_queue(node):
             return {
                 "user_id" : message_data["sender"], 
                 "message" : message_data["text"],
-                "image" : message_data["image"]
+                "image" : message_data["image"],
+                "conversation_id" : message_data["conversation_id"]
             }
         else:
             return None
@@ -2108,7 +2268,8 @@ def process_queue(node):
         return {
                 "user_id" : None, 
                 "message" : None,
-                "image" : None
+                "image" : None,
+                "conversation_id" : None,
             }
         """,
         "description" : None,
@@ -2117,24 +2278,32 @@ def process_queue(node):
         "user_id" : "string",
         },
         "outputs" : {
-        "user_id" : "string",
-        "message" : "string",
-        "image" : "image",
+            "user_id" : "string",
+            "message" : "string",
+            "image" : "image",
+            "conversation_id" : "string"
         }
     },
     "emit_back_to_client" : {
         "function_name": "emit_back_to_client",
         "import_string" : None,
         "function_string" : """
-def emit_back_to_client(node, user_id=None, message=None):
+def emit_back_to_client(node, user_id=None, message=None, image=None, conversation_id=None):
+    print(user_id, message, image)
     print("Emitting to: ", user_id)
     sid = clients.get(user_id)
     image_url = "nil"
     response_data = {
         'text': message,
         'image': image_url,
-        'sender': "Bot"
+        'sender': "timestamp_Bot",
+        'conversation_id': conversation_id,
     }
+    try:
+        global conversations
+        conversations[user_id][conversation_id].append(response_data)  # Store the message
+    except:
+        pass
     if sid:
         socketio.emit('server_response', response_data, room=sid)
     else:
@@ -2143,11 +2312,13 @@ def emit_back_to_client(node, user_id=None, message=None):
         "description" : None,
         "documentation" : None,
         "inputs" : {
-        "user_id" : "string",
-        "message" : "string"
+            "user_id" : "string",
+            "message" : "string",
+            "image" : "string",
+            "conversation_id" : "string"
         },
         "outputs" : {
-        "user_id" : "string",
+            "user_id" : "string",
         }
     },
     "stt" : {
@@ -2305,7 +2476,8 @@ rec.SetSpkModel(spk_model)
 
 stream = sd.RawInputStream(samplerate=samplerate, blocksize=8000, device=None,
                            dtype='int16', channels=1, callback=callback)
-stream.start()
+stream_started = False
+#stream.start()
 
 recording_started = False
 audio_data = b''
@@ -2313,13 +2485,21 @@ audio_data = b''
 wait_time = 0
 spoken = False
 
+
+
 def stt(node):
     def update_text_input(dt, transcribed_text):
         app.root.get_screen("chatbox").ids.text_input.text += transcribed_text
 
     await asyncio.sleep(0.1)
+    global stream_started
     global wait_time
     global spoken
+    
+    if not stream_started:
+        stream_started = True
+        stream.start()
+        
     wait_time += 0.1
     #Connect this and return 
     data = q.get()
@@ -2613,8 +2793,10 @@ def trigger_after_stt(node, transcribed_text=None):
         "import_string" : None,
         "function_string" : """
 
-def search_facebook(node, user_input=None, instruct_type=None):
+def search_facebook(node, user_input=None, instruct_type=None, user_id=None, conversation_id=None, image=None):
     if instruct_type == 3:
+        #Generate facebook prompt
+        
         # Building the command
         command = ['python', 'search_facebook.py'] + [user_input]
         
@@ -2926,15 +3108,16 @@ def is_equal(node, A=None, B=None):
         "function_name": "get_instruct_type_node",
         "import_string" : None,
         "function_string" : '''
-def get_instruct_type_node(node, user_id=None, user_input=None, context=None):
+def get_instruct_type_node(node, user_id=None, user_input=None, context=None, image=None, conversation_id=None):
     # Input text containing the Python code block
     #print("Running get instruct type")
-    asyncio.sleep(0.1)
-    if user_id == None:
-        node.stop = True
-        return {"instruct_type" : 0}
-    if user_input == None:
-        return {"instruct_type" : 0}
+    #asyncio.sleep(0.1)
+    
+    if user_id == None or user_input == None:
+        node.stop["user"] = True
+        #print("None, skipping")
+        return None
+        
     generate_code = (
         f"User Input: {user_input}\\n"
         "Instruct Types:\\n"
@@ -2953,10 +3136,7 @@ def get_instruct_type_node(node, user_id=None, user_input=None, context=None):
     if context:
         message_array.append({"role": "context", "content": context})
     global TOGETHER_API_KEY
-    client_for_instruct = OpenAI(
-      api_key=TOGETHER_API_KEY,
-      base_url='https://api.together.xyz/v1',
-    )
+    
     chat_completion = client_for_instruct.chat.completions.create(
       messages=message_array,
       model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
@@ -2976,20 +3156,27 @@ def get_instruct_type_node(node, user_id=None, user_input=None, context=None):
     else:
         print("instruct_type not found in the data")
     #instruct_type = int(response)
-    print("Bot: ", response)
-    return {"user_id" : user_id, "instruct_type" : instruct_type, "message" : user_input}
+    print("Bot: ", response, user_id, user_input)
+    time.sleep(1.5)
+    
+    return {"user_id" : user_id, "instruct_type" : instruct_type, "message" : user_input, "image" : image, "conversation_id" : conversation_id}
         ''',
         "description" : None,
         "documentation" : None,
         "inputs" : {
 			"user_id" : "string",
             "user_input" : "string",
-            "context" : "string"
+            "context" : "string",
+            "image" : "string",
+            "conversation_id" : "string",
         },
         "outputs" : {
 			"user_id" : "string",
             "message" : "string",
             "instruct_type" : "num",
+            "context" : "string",
+            "image" : "string",
+            "conversation_id" : "string",
         }
     },
     "generate_image_prompt" : {
@@ -3028,13 +3215,14 @@ def generate_image_prompt(node, model=None, user_input=None, context=None, instr
         "function_name": "is_normal_prompt",
         "import_string" : None,
         "function_string" : """
-def is_normal_prompt(node, user_id=None, message=None, instruct_type=None):
+def is_normal_prompt(node, user_id=None, message=None, instruct_type=None, image=None, conversation_id=None, context=None):
+    print("user_id: ", user_id)
     print("Printed instruct: ", instruct_type)
     #if not instruct_type == 1:
         #node.stop = True
         #pass
     print("Ran is normal, message: ", message)
-    return {"user_id" : user_id, "message" : message}
+    return {"user_id" : user_id, "message" : message, "context" : context, "image" : image, "conversation_id" : conversation_id}
         """,
         "description" : None,
         "documentation" : None,
@@ -3042,27 +3230,41 @@ def is_normal_prompt(node, user_id=None, message=None, instruct_type=None):
 			"user_id" : "string",
             "message" : "string",
             "instruct_type" : "num",
+            "image" : "string",
+            "conversation_id" : "string",
+            "context" : "string"
+            
         },
         "outputs" : {
 			"user_id" : "string",
             "message" : "string",
+            "image" : "string",
+            "conversation_id" : "string",
+            "context" : "string"
+            
         }
     },
     "prompt" : {
         "function_name": "prompt",
         "import_string" : None,
         "function_string" : """
-def prompt(node, user_id=None, model=None, user_input=None, context=None, instruct_type=None):
+def prompt(node, user_id=None, model=None, user_input=None, context=None, instruct_type=None, image=None, conversation_id=None):
     app = MDApp.get_running_app()
     print("Ran Prompt")
-    print(model, user_input, context)
+    
     user_text = user_input
     # Continue the conversation
     if context:
         context = "Context: " + context
-    response = app.continue_conversation(user_text=user_text, context=context, user_id=user_id)
-    print("output: ", response)
-    return {"user_id" : user_id, "output" : response}
+    if user_input != None:
+        response = app.continue_conversation(user_text=user_text, context=context, user_id=user_id, image=image, conversation_id=conversation_id)
+        print("output: ", response)
+        time.sleep(1)
+        print("Returning", model, user_id, user_input, context, response)
+        return {"user_id" : user_id, "output" : response, "image" : image, "conversation_id" : conversation_id}
+    else:
+        node.stop[user_id] = True
+        return None
         """,
         "description" : None,
         "documentation" : None,
@@ -3072,17 +3274,27 @@ def prompt(node, user_id=None, model=None, user_input=None, context=None, instru
             "user_input" : "string", 
             "instruct_type" : "num",
             "context" : "string",
+            "image" : "string",
+            "conversation_id" : "string",
         },
         "outputs" : {
 			"user_id" : "string",
             "output" : "string",
+            "image" : "string",
+            "conversation_id" : "string",
         }
     },
     "image_to_text" : {
         "function_name": "image_to_text",
         "import_string" : None,
         "function_string" : """
-def image_to_text(node, user_image=None):
+def image_to_text(node, user_id=None, user_input=None, context=None, image=None):
+    # Input text containing the Python code block
+    #print("Running get instruct type")
+    asyncio.sleep(0.1)
+    if user_id == None or user_input == None:
+        node.stop["user"] = True
+        return None
     if user_image:
         # Load the image using PIL
         print(user_image)
@@ -3547,6 +3759,10 @@ KV = '''
 
 <LoraTrainerScreen>
     name: 'lora_trainer_screen'
+
+<KukaScreen>
+    name: 'kuka_screen'
+    
 <CustomComponent>:
     background_color: (0.5, 0.5, 0.5, 1)
     orientation: 'horizontal'
@@ -3774,6 +3990,7 @@ ScreenManager:
     WidgetTreeScreen:
     SelectAppScreen:
     MapScreen:
+    KukaScreen:
 '''
 
 import math
@@ -4305,6 +4522,8 @@ def async_wrapper(f, *args, **kwargs):
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(f(*args, **kwargs))
 """
+TOGETHER_API_KEY = "4070baa3baed3400f79377ea3b4221f2024725f970bbf02dd0b6d4fba2175bc6"
+
 class MapScreen(Screen):
     def __init__(self, **kwargs):
         super(MapScreen, self).__init__(**kwargs)
@@ -5276,6 +5495,10 @@ print(\"Added\", {function_name})
         
         render_button = Button(text='Renderer', on_press=self.switch_to_renderer)
         apps_layout.add_widget(render_button)
+        
+        kuka_button = Button(text='Kuka', on_press=self.switch_to_kuka)
+        apps_layout.add_widget(kuka_button)
+        
         # Bind button press to switch_to_screen method
         chatbot_button.bind(on_press=self.switch_to_screen)
         
@@ -5551,17 +5774,628 @@ print(\"Added\", {function_name})
         # Switch to 'chatbox'
         self.manager.transition = NoTransition()
         self.manager.current = 'render_screen'
+        
+    def switch_to_kuka(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'kuka_screen'
     
     def switch_to_apps(self, instance):
         self.manager.transition = NoTransition()
         self.manager.current = 'select_app_screen'
+
+# Define global variables for position and gripper position
+pos = [-0.4, 0.0, 0.5]
+gripper_pos = 0.0  # Initial value for gripper position
+current_pos = [0,0,0]
+ball_pos = [0,0,0]
+target_pos = None
+ball_color = "ball_1"
+
+class KukaScreen(Screen):
+    x_pos = NumericProperty(-0.4)
+    y_pos = NumericProperty(0.0)
+    z_pos = NumericProperty(0.5)
+    gripper_pos = NumericProperty(0.0)
+    roll_angle = NumericProperty(0.0)  # Add a property for roll angle
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.selected_image = False
+        self.gripped = False
+        self.track_ball = False  # Flag to control tracking the ball
+        self.new_transition = False
+        
+        # Create the main BoxLayout container
+        main_layout = BoxLayout(orientation='vertical', spacing=10, padding=10)
+        # Create the back button layout
+        back_box = BoxLayout(size_hint=(1, None), height=40)
+        back_button = Button(text="Back", on_press=self.switch_to_screen)
+        main_layout.add_widget(back_button)
+        # Create a BoxLayout for sliders and labels
+        slider_layout = BoxLayout(orientation='vertical', spacing=5)
+        
+        # Label and slider for x position
+        slider_layout.add_widget(Label(text="X Position"))
+        self.x_slider = Slider(min=-2, max=2, value=self.x_pos)
+        self.x_slider.bind(value=self.update_x_pos)
+        slider_layout.add_widget(self.x_slider)
+
+        # Label and slider for y position
+        slider_layout.add_widget(Label(text="Y Position"))
+        self.y_slider = Slider(min=-2, max=2, value=self.y_pos)
+        self.y_slider.bind(value=self.update_y_pos)
+        slider_layout.add_widget(self.y_slider)
+
+        # Label and slider for z position
+        slider_layout.add_widget(Label(text="Z Position"))
+        self.z_slider = Slider(min=0, max=2, value=self.z_pos)
+        self.z_slider.bind(value=self.update_z_pos)
+        slider_layout.add_widget(self.z_slider)
+
+        # Label and slider for gripper position
+        slider_layout.add_widget(Label(text="Gripper Position"))
+        self.gripper_slider = Slider(min=0, max=0.8, value=self.gripper_pos)
+        self.gripper_slider.bind(value=self.update_gripper_pos)
+        slider_layout.add_widget(self.gripper_slider)
+
+        # Label and slider for roll angle
+        slider_layout.add_widget(Label(text="Roll Angle"))
+        self.roll_slider = Slider(min=-math.pi, max=math.pi, value=self.roll_angle)  # Range for roll angle
+        self.roll_slider.bind(value=self.update_roll_angle)
+        slider_layout.add_widget(self.roll_slider)
+
+        # Add the slider layout to the main layout
+        main_layout.add_widget(slider_layout)
+
+        # Text input for controlling the gripper
+        self.command_input = TextInput(
+            hint_text="Enter command (e.g., open, close)", 
+            multiline=False,
+            height=50,  # Set height
+            size_hint=(1, None)  # Allow it to scale with width but not height
+        )
+        self.command_input.bind(on_text_validate=self.on_command_entered)
+        main_layout.add_widget(self.command_input)
+        
+        # Add a button to open the file selector
+        file_button = Button(text="Open File", size_hint=(1, None), height=40)
+        file_button.bind(on_press=self.open_image_file_selector)
+        main_layout.add_widget(file_button)
+        
+        # Add an Image widget for displaying the camera view
+        self.camera_view = Image(size_hint=(1, None), height=400)  # Make it larger
+        main_layout.add_widget(self.camera_view)
+        
+        # Set the layout of the screen to the main layout
+        self.add_widget(main_layout)
+     
+    def open_image_file_selector(self, instance):
+        root = tk.Tk()
+        root.withdraw()  # Hide the main Tkinter window
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg;*.bmp;*.gif")]  # Limit to image files
+        )
+        if file_path:
+            print(f"Selected file: {file_path}")  # Do something with the selected image file
+            self.selected_image = file_path
+            self.process_image()
+            
+    def switch_to_screen(self, instance):
+        # Switch to 'chatbox'
+        self.manager.transition = NoTransition()
+        self.manager.current = 'draggable_label_screen'
+        
+    def update_x_pos(self, instance, value):
+        global pos
+        pos[0] = value
+
+    def update_y_pos(self, instance, value):
+        global pos
+        pos[1] = value
+
+    def update_z_pos(self, instance, value):
+        global pos
+        pos[2] = value
+
+    def update_gripper_pos(self, instance, value):
+        global gripper_pos
+        gripper_pos = value  # Update the gripper position based on the slider value
+
+    def update_roll_angle(self, instance, value):
+        self.roll_angle = value  # Update the roll angle based on the slider value
+
+    def update_camera_view(self, image_data):
+        if image_data is not None:
+            # Schedule the UI update to run on the main thread
+            Clock.schedule_once(lambda dt: self._update_texture(image_data))
+
+    def _update_texture(self, image_data):
+        # Internal method to update the Image widget with new camera data
+        texture = Texture.create(size=(image_data.shape[1], image_data.shape[0]), colorfmt='rgb')
+        texture.blit_buffer(image_data.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+        texture.flip_vertical()
+        self.camera_view.texture = texture
+        
+    def on_command_entered(self, instance=None):
+        # Run the command handling in a separate thread to avoid blocking the UI
+        threading.Thread(target=self.process_command, args=(self.command_input.text.strip(),)).start()
+        
+    def process_image(self):
+        global public_url
+        # Use regex to extract the Ngrok public URL and the local path
+        match = re.search(r'"(https?://[^\s]+)" -> "(http://localhost[^\s]+)"', str(public_url))
+        ngrok_public_url = None
+        #We need to move the image to the uploads folder
+        
+        if match:
+            ngrok_public_url = match.group(1)  # Extracts the Ngrok public URL
+            # Split by '/' and get the last part
+            filename = self.selected_image.split('/')[-1]
+            # Construct the URL for the uploaded file
+            # Copy the file to the destination directory
+            shutil.copy(self.selected_image, f"uploads/{filename}")
+            file_url = f"{ngrok_public_url}/uploads/{filename}"
+            print(file_url)
+        
+        if file_url:
+            # Create the message array to be sent to the LLM
+            message_array = [
+                {
+                    "role": "system",
+                    "content": "Your role is to describe images comprehensively, including its colors, etc."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                            {
+                                    "type": "text",
+                                    "text": "What is in the image?"
+                            },
+                            {
+                                    "type": "image_url",
+                                    "image_url": {
+                                            "url": file_url
+                                    }
+                            }
+                    ]
+                }
+            ]
+            
+            
+            # Interact with the LLM (this can take time, so we run it in a separate thread)
+            chat_completion = client.chat.completions.create(
+                messages=message_array,
+                model="meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+                max_tokens=5000
+            )
+            # Extract the response content
+            response = chat_completion.choices[0].message.content
+            print(response)
+            
+            self.process_command(command=response)
+    
+    def process_command(self, command):
+        # For other commands, set the flag to False to stop tracking the ball
+        self.track_ball = False
+        self.gripped = False
+        gripper_pos = 0  # Fully open the gripper
+        print(f"Tracking stopped. Command: {command}")
+        
+        # Define the prompt to instruct the LLM on what to do
+        generate_code = (
+            f"User Input: {command}\n"
+            "Command Types:\n"
+            "0: Open the gripper.\n"
+            "1: Close the gripper.\n"
+            "2: Move north.\n"
+            "3: Move south.\n"
+            "4: Move east.\n"
+            "5: Move west.\n"
+            "6: Move up.\n"
+            "7: Move down.\n"
+            "8: Move to the ball.\n"
+            "9: When none of the above\n"
+            "Based on the input, return only the command number.\n"
+            "Format: command type:<number>"
+        )
+        
+        # Create the message array to be sent to the LLM
+        message_array = [
+            {"role": "system", "content": "Your role is to decide what the command type to use based on the user input. You will move to what the user describes"},
+            {"role": "user", "content": generate_code}
+        ]
+
+        client_for_instruct = OpenAI(
+            api_key=TOGETHER_API_KEY,
+            base_url='https://api.together.xyz/v1',
+        )
+        
+        # Interact with the LLM (this can take time, so we run it in a separate thread)
+        chat_completion = client_for_instruct.chat.completions.create(
+            messages=message_array,
+            model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+        )
+
+        # Extract the response content
+        response = chat_completion.choices[0].message.content
+
+        # Use a regular expression to find the command type number in the response
+        response = response.lower()  # Convert to lowercase for consistency
+        pattern = re.compile(r"command type\s*:\s*(\d+)")
+        match = pattern.search(response)
+        command_type = int(match.group(1)) if match else None
+
+        if command_type is None:
+            print("command_type not found in the data")
+
+        print("Bot Response:", response)
+
+        # Handle the command execution in the main thread to update the UI
+        Clock.schedule_once(lambda dt: self.execute_command(command_type, command), 0)
+
+    def execute_command(self, command_type, command):
+        # Execute action based on the command type
+        global gripper_pos, target_pos, ball_pos
+        if command_type == 0:
+            gripper_pos = 0  # Fully open the gripper
+        elif command_type == 1:
+            gripper_pos = 0.8  # Fully close the gripper
+        elif command_type == 2:
+            target_pos = [0, 1, 0]  # Move north
+        elif command_type == 3:
+            target_pos = [0, -1, 0]  # Move south
+        elif command_type == 4:
+            target_pos = [1, 0, 0]  # Move east
+        elif command_type == 5:
+            target_pos = [-1, 0, 0]  # Move west
+        elif command_type == 6:
+            target_pos = [0, 0, 1]  # Move up
+        elif command_type == 7:
+            target_pos = [0, 0, -1]  # Move down
+        elif command_type == 8:
+            # Set track_ball to True to start tracking the ball
+            # Set track_ball to True to start tracking the ball
+            
+            #Also change the color of the ball
+            # Create the message array to be sent to the LLM
+            # Define the prompt to instruct the LLM on what to do
+            generate_code = (
+                f"User Input: {command}\n"
+                "Ball colors:\n"
+                "0: Red.\n"
+                "1: Green.\n"
+                "2: Blue.\n"
+                "3: Yellow.\n"
+                "4: Magenta.\n"
+                "Based on the input, return only the command number.\n"
+                "Format: command type:<number>"
+            )
+            
+            message_array = [
+                {"role": "system", "content": "Your role is to decide what color of the ball is gonna get grabbed."},
+                {"role": "user", "content": generate_code}
+            ]
+            
+            client_for_instruct = OpenAI(
+            api_key=TOGETHER_API_KEY,
+            base_url='https://api.together.xyz/v1',
+            )
+            # Interact with the LLM
+            chat_completion = client_for_instruct.chat.completions.create(
+                messages=message_array,
+                model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+            )
+
+            # Extract the response content
+            response = chat_completion.choices[0].message.content
+
+            # Use a regular expression to find the command type number in the response
+            response = response.lower()  # Convert to lowercase for consistency
+            pattern = re.compile(r"command type\s*:\s*(\d+)")
+            match = pattern.search(response)
+            command_type = int(match.group(1)) if match else None
+            global ball_color
+            ball_color = f"ball_{command_type+1}"
+            print("Ball color ", ball_color)
+            self.track_ball = True
+            print("Tracking Ball Command Received.")
+        elif command_type == 9:
+            print("Command Received: None of the above")
+
+        # Optional: You can add more UI feedback or actions here
+        self.new_transition = True
+        # Start smooth transition (even if track_ball is True or False)
+        self.start_smooth_transition()
+
+        self.command_input.text = ""  # Clear the text input
+        
+    def start_smooth_transition(self):
+        # Start updating the position smoothly
+        self.transition_step = 0
+        self.transition_max_steps = 60  # Total steps for the smooth transition (adjust for speed)
+        print("Transitioning")
+        Clock.schedule_interval(self.smooth_transition_update, 1/60)  # 60 FPS update
+
+    def smooth_transition_update(self, dt):
+        global current_pos, target_pos, pos, ball_pos, gripper_pos
+        
+        if self.track_ball:
+            self.transition_step = self.transition_max_steps
+            # Calculate the horizontal distance (X and Y distance) between the ball and the current position
+            horizontal_distance = ((current_pos[0] - ball_pos[0])**2 + (current_pos[1] - ball_pos[1])**2)**0.5
+            
+            if horizontal_distance < 0.1 and not self.gripped:  # If the object is directly above the ball (within a small threshold)
+                if not self.gripped:
+                    target_pos = [ball_pos[0], ball_pos[1], ball_pos[2] + 0.45]  # Slightly above the ball
+                    # Schedule the gripper to close after a short delay (e.g., 1 second)
+                    pos = target_pos
+                    Clock.schedule_once(self.close_gripper, 1)
+                if self.gripped:
+                    target_pos = [ball_pos[0], ball_pos[1], ball_pos[2] + 1]  # Slightly above the ball
+            else:
+                target_pos = [ball_pos[0], ball_pos[1], ball_pos[2] + 1]  # Higher above if not directly above
+                pos = target_pos
+                
+            #print("Ball position being tracked:", target_pos)
+
+        # Interpolate between current_pos and target_pos
+        elif self.transition_step < self.transition_max_steps:
+            if target_pos:
+                t = self.transition_step / self.transition_max_steps
+                current_pos = [
+                    (1 - t) * current_pos[i] + t * target_pos[i] for i in range(3)
+                ]
+                pos = current_pos
+                self.transition_step += 1
+        else:
+            if not self.new_transition:
+                self.new_transition = False
+                current_pos = target_pos  # Ensure it ends exactly on the target
+                Clock.unschedule(self.smooth_transition_update)  # Stop the update
+
+    def close_grip(self, dt):
+        self.gripped = True
+        
+    def close_gripper(self, dt):
+        global gripper_pos
+        gripper_pos = 0.8  # Fully close the gripper
+        # Schedule the function to close the grip after 2 seconds
+        Clock.schedule_once(self.close_grip, 2)  # Delay closure of the grip by 2 seconds
+
+def create_ball(position, radius=0.1, mass=1, color=[1, 0, 0, 1], friction_values=None):
+    """
+    Create a ball in the simulation at the specified position with the given radius, mass, and color.
+
+    :param position: List of [x, y, z] coordinates for the ball's starting position.
+    :param radius: Radius of the ball (default: 0.1).
+    :param mass: Mass of the ball (default: 0.5).
+    :param color: RGBA color list for the ball (default: [1, 0, 0, 1] for red).
+    :param friction_values: Dictionary specifying friction properties (default: None).
+                            Example: {"lateral": 5.0, "spinning": 1.5, "rolling": 1.0}
+    :return: The unique ID of the created ball.
+    """
+    # Create collision and visual shapes for the ball
+    ball_collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=radius)
+    ball_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=radius, rgbaColor=color)
+    
+    # Create the ball body
+    ball_id = p.createMultiBody(
+        baseMass=mass,
+        baseCollisionShapeIndex=ball_collision_shape,
+        baseVisualShapeIndex=ball_visual_shape,
+        basePosition=position
+    )
+    
+    
+    # Apply friction if specified
+    if friction_values:
+        p.changeDynamics(
+            ball_id, -1,
+            lateralFriction=friction_values.get("lateral", 1e5),
+            spinningFriction=friction_values.get("spinning", 1e5),
+            rollingFriction=friction_values.get("rolling", 1e5)
+        )
+    else:
+        p.changeDynamics(
+            ball_id, -1,
+            lateralFriction=1e5,
+            spinningFriction=1e5,
+            rollingFriction=1e5
+        )
+    
+    # Reset velocity for a clean start
+    p.resetBaseVelocity(ball_id, [0, 0, 0], [0, 0, 0])
+
+    # Optionally apply gravity (if required by your setup)
+    p.applyExternalForce(ball_id, -1, forceObj=[0, 0, -9.81], posObj=[0, 0, 0], flags=p.WORLD_FRAME)
+    
+    return ball_id
+
+def start_pybullet_simulation(app_instance):
+    global pos, gripper_pos, current_pos, ball_pos, ball_color
+    clid = p.connect(p.SHARED_MEMORY)
+    if clid < 0:
+        p.connect(p.GUI)
+    p.setAdditionalSearchPath(pybullet_data.getDataPath())
+    p.loadURDF("plane.urdf", [0, 0, -0.3])
+    kukaId = p.loadURDF("kuka_iiwa/model.urdf", [0, 0, 0])
+    kukaEndEffectorIndex = 6
+    numJoints = p.getNumJoints(kukaId)
+    ll = [-.967, -2, -2.96, 0.19, -2.96, -2.09, -3.05]
+    ul = [.967, 2, 2.96, 2.29, 2.96, 2.09, 3.05]
+    jr = [5.8, 4, 5.8, 4, 5.8, 4, 6]
+    rp = [0, 0, 0, 0.5 * math.pi, 0, -math.pi * 0.5 * 0.66, 0]
+
+    for i in range(numJoints):
+        p.resetJointState(kukaId, i, rp[i])
+    
+    # Load the gripper URDF model
+    gripper_id = p.loadURDF("gripper.urdf", basePosition=[0, 0, 0.5])
+
+    num_joints = p.getNumJoints(gripper_id)
+    print(f"Number of joints: {num_joints}")
+
+    # Define the joint indices for the left and right fingers
+    left_finger_joint = 0
+    right_finger_joint = 1
+
+    # Initial position for the fingers (open gripper)
+    left_finger_position = 0.2
+    right_finger_position = -0.2
+
+    # Move the joints to the desired positions (open gripper)
+    p.setJointMotorControl2(gripper_id, left_finger_joint, p.POSITION_CONTROL, targetPosition=left_finger_position)
+    p.setJointMotorControl2(gripper_id, right_finger_joint, p.POSITION_CONTROL, targetPosition=right_finger_position)
+
+    # Set gravity in the Z-direction (earth gravity)
+    p.setGravity(0, 0, -9.81)  # Gravity in the negative Z-direction (downward)
+
+    # Use discrete simulation steps
+    p.setRealTimeSimulation(0)
+
+    width, height = 320, 240
+    fov = 60
+    aspect = width / height
+    near, far = 0.02, 5
+
+    # Define the view matrix (camera position and orientation)
+    camera_position = [0, 0, 2]  # Set a fixed position for the camera
+    camera_target = [0, 0, 0]  # Look at the origin
+    camera_up = [0, 0, 1]  # Camera's up direction
+    viewMatrix = p.computeViewMatrix(camera_position, camera_target, camera_up)
+
+    # Define the projection matrix
+    projectionMatrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
+    
+    """
+    # Create a ball at position (0.5, 0.5, 1) to give it height above the ground
+    ball_radius = 0.1  # Adjust the ball size if needed
+    # Create the ball collision and visual shapes
+    ball_collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=ball_radius)
+    ball_visual_shape = p.createVisualShape(p.GEOM_SPHERE, radius=ball_radius, rgbaColor=[1, 0, 0, 1])  # Red color
+
+    # Create the ball with the correct arguments
+    ball_id = p.createMultiBody(
+        baseMass=0.5, 
+        baseCollisionShapeIndex=ball_collision_shape,
+        baseVisualShapeIndex=ball_visual_shape, 
+        basePosition=[0.5, 0, 1]  # Position the ball slightly above the ground
+    )
+
+    # Try higher friction values to increase resistance
+    p.changeDynamics(ball_id, -1, lateralFriction=5.0, spinningFriction=1.5, rollingFriction=1.0)
+
+    # Apply a small initial velocity to make sure the ball starts falling
+    p.resetBaseVelocity(ball_id, [0, 0, 0], [0, 0, 0])  # Reset velocity to zero for a clean start
+
+    # Ensure gravity is properly set by applying a force (as a test)
+    p.applyExternalForce(ball_id, -1, forceObj=[0, 0, -9.81], posObj=[0, 0, 0], flags=p.WORLD_FRAME)
+    """
+    # Dictionary to store ball IDs with descriptive keys
+    balls = {}
+
+    # Number of balls to place in the circle
+    num_balls = 5
+    radius = 0.5
+    center_position = [0, 0, 1]  # Center of the circle
+
+    # Colors for the balls (adjust or add more as needed)
+    colors = [
+        [1, 0, 0, 1],  # Red
+        [0, 1, 0, 1],  # Green
+        [0, 0, 1, 1],  # Blue
+        [1, 1, 0, 1],  # Yellow
+        [1, 0, 1, 1]   # Magenta
+    ]
+
+    # Create balls arranged in a circle
+    for i in range(num_balls):
+        # Calculate the angle for this ball
+        angle = (2 * math.pi / num_balls) * i  # Divide the circle into equal parts
+        
+        # Calculate x and y positions using trigonometry
+        x = center_position[0] + radius * math.cos(angle)
+        y = center_position[1] + radius * math.sin(angle)
+        z = center_position[2]  # Keep the z-coordinate the same as the center
+        
+        # Create the ball and store it in the dictionary
+        ball_key = f"ball_{i+1}"  # Generate a unique key for each ball
+        balls[ball_key] = create_ball(position=[x, y, z], color=colors[i % len(colors)])
+    
+    while True:
+        p.stepSimulation()
+        orn = p.getQuaternionFromEuler([0, -math.pi, 0])
+        jointPoses = p.calculateInverseKinematics(kukaId, kukaEndEffectorIndex, pos, orn, ll, ul, jr, rp)
+        for i in range(numJoints):
+            p.setJointMotorControl2(bodyIndex=kukaId, jointIndex=i, controlMode=p.POSITION_CONTROL,
+                                    targetPosition=jointPoses[i], force=500)
+        
+        # Control the gripper (fingers) based on the gripper_pos slider value
+        gripper_offset = gripper_pos * 0.2  # Max distance the fingers move
+        grip_force = 5000  # Increase the force if needed
+        p.setJointMotorControl2(gripper_id, left_finger_joint, p.POSITION_CONTROL, 
+                                targetPosition=gripper_offset, force=grip_force)
+        p.setJointMotorControl2(gripper_id, right_finger_joint, p.POSITION_CONTROL, 
+                                targetPosition=-gripper_offset, force=grip_force)
+        # Get the position of the ball
+        ball_pos, ball_orientation = p.getBasePositionAndOrientation(balls[ball_color])
+        
+        # Print the position of the ball
+        #print("Ball Position: ", ball_position)
+
+        link_state = p.getLinkState(kukaId, kukaEndEffectorIndex)
+        camera_position = link_state[0]
+        
+        # Get the position and orientation of the KUKA robot's end effector
+        link_state = p.getLinkState(kukaId, kukaEndEffectorIndex)
+        kuka_position = link_state[0]  # The position of the end effector (x, y, z)
+        kuka_orientation = link_state[1]  # The orientation of the end effector (quaternion)
+
+        # Define the pitch rotation (rotation around the X-axis)
+        pitch_rotation = -math.pi / 2  # -90 degrees in radians
+        pitch_quaternion = p.getQuaternionFromEuler([pitch_rotation, 0, 0])
+
+        # Define the roll rotation (rotation around the Z-axis)
+        roll_rotation = app_instance.roll_angle  # Get the roll angle from the slider
+        roll_quaternion = p.getQuaternionFromEuler([0, 0, roll_rotation])
+
+        # Multiply the original KUKA orientation by the pitch and roll rotation quaternions
+        _, new_orientation = p.multiplyTransforms([0, 0, 0], kuka_orientation, [0, 0, 0], roll_quaternion)
+        _, new_orientation = p.multiplyTransforms([0, 0, 0], new_orientation, [0, 0, 0], pitch_quaternion)
+
+        # Set the gripper's position to the KUKA end effector's position
+        p.resetBasePositionAndOrientation(gripper_id, kuka_position, new_orientation)
+        current_pos = kuka_position
+        view_matrix = p.computeViewMatrixFromYawPitchRoll(camera_position, distance=0.5, yaw=0, pitch=-90, roll=0, upAxisIndex=2)
+        projection_matrix = p.computeProjectionMatrixFOV(fov=fov, aspect=aspect, nearVal=near, farVal=far)
+        
+        # Capture camera image (RGB only, no depth or segmentation)
+        img_arr = p.getCameraImage(width, height, view_matrix, projection_matrix, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+
+        # Only process RGB data (ignore depth and segmentation)
+        rgb_array = np.reshape(img_arr[2], (height, width, 4))[:, :, :3]  # RGB data only
+
+        # Update the camera view in the app
+        app_instance.update_camera_view(rgb_array)
+
+        # Get the camera's forward direction from the view matrix (this will be the camera's "look-at" direction)
+        forward_vector = np.array([view_matrix[8], view_matrix[9], view_matrix[10]])
+        time.sleep(1 / 240.)
         
 class DraggableLabelApp(MDApp):
     past_messages = {}
     def build(self):
         self.theme_cls.theme_style = 'Dark'
         return Builder.load_string(KV)
-    
+    def on_start(self):
+        # Code here runs right after the app has finished building
+        print("Hello from on_start")
+        """
+        simulation_thread = threading.Thread(target=start_pybullet_simulation, args=(self.root.get_screen("kuka_screen"),))
+        simulation_thread.daemon = True
+        simulation_thread.start()
+        """
     def switch_screen(self, screen_name):
         screen_manager = self.root.ids.screen_manager
         screen_manager.transition = NoTransition()
@@ -5588,50 +6422,81 @@ class DraggableLabelApp(MDApp):
         formatted_text = formatted_text.replace("\\", "")
         return formatted_text
     
-    #Function to initialize conversation
-    def start_conversation():
-        self.add_message("system", "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them.")
-        #add_message("user", "Hello!")
-    
     # Function to add a message to the list
-    def add_message(self, role, content, user_id=None):
-        if user_id not in self.past_messages:
-            self.past_messages[user_id] = []
-            #O1 does not support system
-            self.past_messages[user_id].append({
-                "role": "user",
+    def add_message(self, isVisionModel, role, user_text=None, image=None, user_id=None, conversation_id=None):
+        if role == "assistant":
+            self.past_messages[user_id][conversation_id].append({
+                "role": role,
+                "content": user_text
+            })
+        if isVisionModel:
+            if user_id not in self.past_messages:
+                self.past_messages[user_id] = {}
+            if conversation_id not in self.past_messages[user_id]:
+                self.past_messages[user_id][conversation_id] = []
+            self.past_messages[user_id][conversation_id].append({
+                "role": "system",
                 "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."
             })
-            
-        self.past_messages[user_id].append({"role": role, "content": content})
+            if image != None:
+                self.past_messages[user_id][conversation_id].append({"role": role, "content": [{"type" : "text", "text" : user_text}, {"type" : "image_url", "image_url" : {"url" : image}}]})
+            else:
+                self.past_messages[user_id][conversation_id].append({"role": role, "content": [{"type" : "text", "text" : user_text}]})
+        else:
+            #O1 does not support system
+            if user_id not in self.past_messages:
+                self.past_messages[user_id] = {}
+            if conversation_id not in self.past_messages[user_id]:
+                self.past_messages[user_id][conversation_id] = []
+            self.past_messages[user_id][conversation_id].append({
+                "role": "system",
+                "content": "Your role is to assist users by providing information, answering questions, and engaging in conversations on various topics. Whether users need help with programming, want to discuss philosophical questions, or just need someone to chat with, I'm here to assist them."
+            })
+                
+            self.past_messages[user_id][conversation_id].append({"role": role, "content": user_text})
+        
         if role == "user":
-            print(f"User: {content}")
-    
+            print(f"User: {user_text}")
     # Function to continue the conversation
-    def continue_conversation(self, model=None, user_text=None, context=None, user_id=None):
+    image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp')
+    def continue_conversation(self, model=None, user_text=None, context=None, user_id=None, image=None, conversation_id=None):
         #print(past_messages)
         # Create the chat completion request with updated past messages
-        self.add_message("user", user_text, user_id)
-        if context:
-            print("Adding context: ", context)
-            self.add_message("user", context, user_id)
-        chat_completion = client.chat.completions.create(
-          messages=self.past_messages[user_id],
-          model= model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",#"o1-preview",#
-          max_tokens=1000,
-        )
-        #print(self.past_messages)
-        response = chat_completion.choices[0].message.content
-        # Update the past messages list with the new chat completion
-        print("Response: ", response)
-        print("Chat completion", chat_completion)
-        response = response.replace("\\_", "_")
-        print(response)
-        self.add_message("assistant", response, user_id)
-
-        # Print the assistant's response
-        print("Bot: ", response)
-        return response
+        # List of common image extensions
+        
+        # Check if filename ends with one of the image extensions
+        if image:
+            if not image.lower().endswith(self.image_extensions):
+                image = None
+        
+        if user_text != None:
+            model = "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo"#"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" #"meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo"
+            isVisionModel = True if model == "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo" else False
+            self.add_message(isVisionModel, "user", user_text = user_text, image = image, user_id = user_id, conversation_id=conversation_id)
+            if context:
+                print("Adding context: ", context)
+                self.add_message(isVisionModel, "user", user_text = user_text, image = image, user_id = user_id, conversation_id=conversation_id)
+            
+            chat_completion = client.chat.completions.create(
+              messages=self.past_messages[user_id][conversation_id],
+              model= model,#"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",#
+              max_tokens=5000,
+            )
+            
+            #print(self.past_messages)
+            response = chat_completion.choices[0].message.content
+            # Update the past messages list with the new chat completion
+            print("Response: ", response)
+            print("Chat completion", chat_completion)
+            response = response.replace("\\_", "_")
+            print(response)
+            self.add_message(isVisionModel, "assistant", user_text = response, image = image, user_id = user_id, conversation_id=conversation_id)
+            
+            # Print the assistant's response
+            print("Bot: ", response)
+            return response
+        else:
+            return None
     """
     def retrieve_code(self, user_prompt):
         file_path = "somefibo.py_doc.txt"  # Specify the path to your file
